@@ -39,25 +39,27 @@ class WaypointUpdater(object):
         # TODO: Add other member variables you need below
         self.current_pose = None
         self.waypoints = None
-        self.next_wp_idx = 1
+        self.next_wp_idx = 0
 
         rospy.spin()
 
     def pose_cb(self, msg):
         # TODO: Done Implement
-        rospy.loginfo('current_pose Received - x:%d, y:%d,z:%d', msg.pose.position.x,msg.pose.position.x,
-                      msg.pose.position.x)
+        rospy.loginfo('current_pose Received - x:%d, y:%d,z:%d', msg.pose.position.x,msg.pose.position.y,
+                      msg.pose.position.z)
         self.current_pose = msg
         if self.waypoints!= None:
             #get next waypoints
             last_wp_idx = self.next_wp_idx -1
             dl = lambda a, b: math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)
-            distance_cp_to_last_wp = dl(self.waypoints[last_wp_idx],self.current_pose.pose)
+            distance_cp_to_last_wp = dl(self.waypoints[last_wp_idx].pose.pose.position,
+                                        self.current_pose.pose.position)
 
             next_wp_idx = self.next_wp_idx
             while self.distance(self.waypoints,last_wp_idx,next_wp_idx)< distance_cp_to_last_wp:
                 next_wp_idx +=1
 
+            #rospy.loginfo('next_wp_index:%d', self.next_wp_idx)
             if next_wp_idx > self.next_wp_idx:
                 self.next_wp_idx = next_wp_idx
                 # publish new final waypoints
@@ -66,10 +68,11 @@ class WaypointUpdater(object):
                 lane.header.stamp = rospy.Time(0)
                 lane.waypoints = self.waypoints[self.next_wp_idx:(self.next_wp_idx+LOOKAHEAD_WPS)]
                 self.final_waypoints_pub.publish(lane)
+                rospy.loginfo('publish final waypoint - next_wp_index:%d', self.next_wp_idx)
 
     def waypoints_cb(self, waypoints):
         # TODO: Done Implement
-        rospy.loginfo('waypoints Received - count:%d',len(waypoints.waypoints))
+        #rospy.loginfo('waypoints Received - count:%d',len(waypoints.waypoints))
         self.waypoints = waypoints.waypoints
 
     def traffic_cb(self, msg):

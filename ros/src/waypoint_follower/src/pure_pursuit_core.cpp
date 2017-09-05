@@ -333,6 +333,8 @@ geometry_msgs::TwistStamped PurePursuit::outputTwist(geometry_msgs::Twist t) con
   }
 
   double max_v = g_lateral_accel_limit / omega;
+  // fix issue of the sign of velocity
+  max_v = std::copysign(max_v,v);
 
 
   double a = v * omega;

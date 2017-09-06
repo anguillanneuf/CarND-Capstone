@@ -7,12 +7,16 @@ ONE_MPH = 0.44704
 
 
 class Controller(object):
-    def __init__(self, ki,kp,kd,decel_limit,accel_limit,wheel_base, steer_ratio, min_speed, max_lat_accel,
+    def __init__(self, kp,ki,kd,decel_limit,accel_limit,wheel_base, steer_ratio, min_speed, max_lat_accel,
                  max_steer_angle):
         # TODO: Implement
-        self.pid = PID(kp,ki,kd,decel_limit,accel_limit)
+        self.decel_limit = decel_limit
+        self.accel_limit = accel_limit
+        self.pid = PID(kp,ki,kd,-1,1)
         self.yaw = YawController(wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle)
 
+        self.count = 0
+        self.container = [0,0,0,0,0,0,0,0]
     def control(self, target_linear_vel,target_angl_vel,current_linear_vel,dbw_enabled,dt):
         # TODO: Change the arg, kwarg list to suit your needs
         # Return throttle, brake, steer
@@ -27,14 +31,17 @@ class Controller(object):
 
 
         error = target_linear_vel - current_linear_vel
+
         val = self.pid.step(error,dt)
-        rospy.loginfo("Target v, Current,v, Error : %.03f,%.03f,%.03f", target_linear_vel, current_linear_vel, error)
+
+        if target_linear_vel > 0:
+            rospy.loginfo("Target v  %.03f  Error : %02d  Control:%.03f", target_linear_vel, int(100 * error / target_linear_vel),val)
 
         # reference for yaw control
         # Ackermann Steering dynamics http://correll.cs.colorado.edu/?p=1869
         steering = self.yaw.get_steering(target_linear_vel,target_angl_vel,current_linear_vel)
         if val >=0:
-            return val,0.0,steering
+            return val*self.accel_limit,0.0,steering
         else:
-            return 0.0,-val,steering
+            return 0.0,val*self.decel_limit,steering
 

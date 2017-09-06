@@ -92,7 +92,7 @@ class WaypointUpdater(object):
 
     def waypoints_cb(self, waypoints):
         # TODO: Done Implement
-        #rospy.loginfo('waypoints Received - count:%d',len(waypoints.waypoints))
+        # rospy.loginfo('waypoints Received - count:%d',len(waypoints.waypoints))
         self.waypoints = waypoints.waypoints
 
     def traffic_cb(self, msg):

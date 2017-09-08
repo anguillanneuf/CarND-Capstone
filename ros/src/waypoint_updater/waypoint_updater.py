@@ -86,9 +86,9 @@ class WaypointUpdater(object):
                 lane.header.stamp = rospy.Time(0)
                 lane.waypoints = self.waypoints[self.next_wp_idx:(self.next_wp_idx+LOOKAHEAD_WPS)]
                 self.final_waypoints_pub.publish(lane)
-                rospy.loginfo('current_pose Received - x:%d, y:%d,z:%d', msg.pose.position.x, msg.pose.position.y,
-                              msg.pose.position.z)
-                rospy.loginfo('publish final waypoint - next_wp_index:%d', self.next_wp_idx)
+                # rospy.loginfo('current_pose Received - x:%d, y:%d,z:%d', msg.pose.position.x, msg.pose.position.y,
+                #              msg.pose.position.z)
+                # rospy.loginfo('publish final waypoint - next_wp_index:%d', self.next_wp_idx)
 
     def waypoints_cb(self, waypoints):
         # TODO: Done Implement

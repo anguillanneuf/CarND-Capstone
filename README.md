@@ -29,14 +29,18 @@ git clone https://github.com/udacity/carnd_capstone.git
 cd carnd_capstone
 pip install -r requirements.txt
 ```
-3. Make and run styx
+3. Install dbw_mkz ros package
+```bash
+bash <(wget -q -O - https://bitbucket.org/DataspeedInc/dbw_mkz_ros/raw/default/dbw_mkz/scripts/sdk_update.bash)
+```
+4. Make and run styx
 ```bash
 cd ros
 catkin_make
 source devel/setup.sh
 roslaunch launch/styx.launch
 ```
-4. Run the simulator
+5. Run the simulator
 ```bash
 unzip lights_no_cars.zip
 cd lights_no_cars

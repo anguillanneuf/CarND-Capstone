@@ -34,7 +34,7 @@ class WaypointUpdater(object):
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
-        rospy.Subscriber('/obstacle_waypoint', Int32, self.obstacle_cb)
+        rospy.Subscriber('/obstacle_waypoint', PoseStamped, self.obstacle_cb)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
@@ -93,10 +93,10 @@ class WaypointUpdater(object):
             if LOG:
                 rospy.loginfo('publish final waypoint - next_wp_index:%d', self.next_wp_idx)
 
-    def waypoints_cb(self, waypoints):
-        self.waypoints = waypoints.waypoints
+    def waypoints_cb(self, msg):
+        self.waypoints = msg.waypoints
         if LOG:
-            rospy.loginfo('waypoints Received - count:%d',len(waypoints.waypoints))
+            rospy.loginfo('waypoints Received - count:%d',len(msg.waypoints))
 
     def traffic_cb(self, msg):
         self.traffic_idx = msg.data

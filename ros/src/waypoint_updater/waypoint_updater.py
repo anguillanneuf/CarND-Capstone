@@ -58,12 +58,12 @@ class WaypointUpdater(object):
                                                                 self.current_pose.pose.orientation.y,
                                                                 self.current_pose.pose.orientation.z,
                                                                 self.current_pose.pose.orientation.w])
-        dl = lambda a, b: math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)
         closest_wp_idx = self.next_wp_idx
 
         for start in range(self.next_wp_idx,len(self.waypoints),LOOKAHEAD_WPS):
             stop = min(start+LOOKAHEAD_WPS,len(self.waypoints))
-            distances = [ dl(self.current_pose.pose.position,self.waypoints[idx].pose.pose.position)
+            distances = [ WaypointUpdater.distance(self.current_pose.pose.position,
+                                                   self.waypoints[idx].pose.pose.position)
                           for idx in range(start,stop)]
             arg_min_idx = np.argmin(distances)
             # stop searching
@@ -111,14 +111,18 @@ class WaypointUpdater(object):
     def set_waypoint_velocity(self, waypoints, waypoint, velocity):
         waypoints[waypoint].twist.twist.linear.x = velocity
 
-    def distance(self, waypoints, wp1, wp2):
+    @staticmethod
+    def distance(waypoints, wp1, wp2):
         dist = 0
-        dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
         for i in range(wp1, wp2+1):
-            dist += dl(waypoints[wp1].pose.pose.position, waypoints[i].pose.pose.position)
+            dist += WaypointUpdater.distance(waypoints[wp1].pose.pose.position,
+                                             waypoints[i].pose.pose.position)
             wp1 = i
         return dist
 
+    @staticmethod
+    def distance(a, b):
+        return math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
 
 if __name__ == '__main__':
     try:

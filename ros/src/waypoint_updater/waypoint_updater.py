@@ -24,7 +24,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
-
+LOG = False
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -46,9 +46,11 @@ class WaypointUpdater(object):
         rospy.spin()
 
     def pose_cb(self, msg):
-        # TODO: Done Implement
-
         self.current_pose = msg
+        if LOG:
+            rospy.loginfo('current_pose Received - x:%d, y:%d,z:%d', msg.pose.position.x,
+            msg.pose.position.y, msg.pose.position.z)
+
         # get next waypoint index
         if self.waypoints is not None:
 
@@ -77,7 +79,8 @@ class WaypointUpdater(object):
                         closest_wp_idx +=1
                     break
 
-            # rospy.loginfo('next_wp_index:%d', closest_wp_idx)
+            if LOG:
+                rospy.loginfo('next_wp_index:%d', closest_wp_idx)
             if closest_wp_idx > self.next_wp_idx:
                 self.next_wp_idx = closest_wp_idx
                 # publish new final waypoints
@@ -86,13 +89,13 @@ class WaypointUpdater(object):
                 lane.header.stamp = rospy.Time(0)
                 lane.waypoints = self.waypoints[self.next_wp_idx:(self.next_wp_idx+LOOKAHEAD_WPS)]
                 self.final_waypoints_pub.publish(lane)
-                # rospy.loginfo('current_pose Received - x:%d, y:%d,z:%d', msg.pose.position.x, msg.pose.position.y,
-                #              msg.pose.position.z)
-                # rospy.loginfo('publish final waypoint - next_wp_index:%d', self.next_wp_idx)
+                if LOG:
+                    rospy.loginfo('publish final waypoint - next_wp_index:%d', self.next_wp_idx)
 
     def waypoints_cb(self, waypoints):
         # TODO: Done Implement
-        # rospy.loginfo('waypoints Received - count:%d',len(waypoints.waypoints))
+        if LOG:
+            rospy.loginfo('waypoints Received - count:%d',len(waypoints.waypoints))
         self.waypoints = waypoints.waypoints
 
     def traffic_cb(self, msg):

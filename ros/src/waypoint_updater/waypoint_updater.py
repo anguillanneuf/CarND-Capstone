@@ -38,7 +38,6 @@ class WaypointUpdater(object):
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
-        # TODO: Add other member variables you need below
         self.current_pose = None
         self.waypoints = None
         self.next_wp_idx = 0
@@ -51,52 +50,52 @@ class WaypointUpdater(object):
             rospy.loginfo('current_pose Received - x:%d, y:%d,z:%d', msg.pose.position.x,
             msg.pose.position.y, msg.pose.position.z)
 
+        if self.waypoints is None:
+            return
+
         # get next waypoint index
-        if self.waypoints is not None:
+        (_, _, yaw) = tf.transformations.euler_from_quaternion([self.current_pose.pose.orientation.x,
+                                                                self.current_pose.pose.orientation.y,
+                                                                self.current_pose.pose.orientation.z,
+                                                                self.current_pose.pose.orientation.w])
+        dl = lambda a, b: math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)
+        closest_wp_idx = self.next_wp_idx
 
-            (_, _, yaw) = tf.transformations.euler_from_quaternion([self.current_pose.pose.orientation.x,
-                                                                    self.current_pose.pose.orientation.y,
-                                                                    self.current_pose.pose.orientation.z,
-                                                                    self.current_pose.pose.orientation.w])
-            dl = lambda a, b: math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)
-            closest_wp_idx = self.next_wp_idx
+        for start in range(self.next_wp_idx,len(self.waypoints),LOOKAHEAD_WPS):
+            stop = min(start+LOOKAHEAD_WPS,len(self.waypoints))
+            distances = [ dl(self.current_pose.pose.position,self.waypoints[idx].pose.pose.position)
+                          for idx in range(start,stop)]
+            arg_min_idx = np.argmin(distances)
+            # stop searching
+            if arg_min_idx< (stop - start -1):
+                closest_wp_idx = start + arg_min_idx
+                y_wp = self.waypoints[closest_wp_idx].pose.pose.position.y
+                x_wp = self.waypoints[closest_wp_idx].pose.pose.position.x
+                y = self.current_pose.pose.position.y
+                x = self.current_pose.pose.position.x
+                heading = math.atan2(y_wp -y, x_wp - x)
 
-            for start in range(self.next_wp_idx,len(self.waypoints),LOOKAHEAD_WPS):
-                stop = min(start+LOOKAHEAD_WPS,len(self.waypoints))
-                distances = [ dl(self.current_pose.pose.position,self.waypoints[idx].pose.pose.position)
-                              for idx in range(start,stop)]
-                arg_min_idx = np.argmin(distances)
-                # stop searching
-                if arg_min_idx< (stop - start -1):
-                    closest_wp_idx = start + arg_min_idx
-                    y_wp = self.waypoints[closest_wp_idx].pose.pose.position.y
-                    x_wp = self.waypoints[closest_wp_idx].pose.pose.position.x
-                    y = self.current_pose.pose.position.y
-                    x = self.current_pose.pose.position.x
-                    heading = math.atan2(y_wp -y, x_wp - x)
+                if math.fabs(heading - yaw) > math.pi/3:
+                    closest_wp_idx +=1
+                break
 
-                    if math.fabs(heading - yaw) > math.pi/3:
-                        closest_wp_idx +=1
-                    break
-
+        if LOG:
+            rospy.loginfo('next_wp_index:%d', closest_wp_idx)
+        if closest_wp_idx > self.next_wp_idx:
+            self.next_wp_idx = closest_wp_idx
+            # publish new final waypoints
+            lane = Lane()
+            lane.header.frame_id = '/world'
+            lane.header.stamp = rospy.Time(0)
+            lane.waypoints = self.waypoints[self.next_wp_idx:(self.next_wp_idx+LOOKAHEAD_WPS)]
+            self.final_waypoints_pub.publish(lane)
             if LOG:
-                rospy.loginfo('next_wp_index:%d', closest_wp_idx)
-            if closest_wp_idx > self.next_wp_idx:
-                self.next_wp_idx = closest_wp_idx
-                # publish new final waypoints
-                lane = Lane()
-                lane.header.frame_id = '/world'
-                lane.header.stamp = rospy.Time(0)
-                lane.waypoints = self.waypoints[self.next_wp_idx:(self.next_wp_idx+LOOKAHEAD_WPS)]
-                self.final_waypoints_pub.publish(lane)
-                if LOG:
-                    rospy.loginfo('publish final waypoint - next_wp_index:%d', self.next_wp_idx)
+                rospy.loginfo('publish final waypoint - next_wp_index:%d', self.next_wp_idx)
 
     def waypoints_cb(self, waypoints):
-        # TODO: Done Implement
+        self.waypoints = waypoints.waypoints
         if LOG:
             rospy.loginfo('waypoints Received - count:%d',len(waypoints.waypoints))
-        self.waypoints = waypoints.waypoints
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement

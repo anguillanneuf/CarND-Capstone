@@ -41,6 +41,7 @@ class WaypointUpdater(object):
         self.current_pose = None
         self.waypoints = None
         self.next_wp_idx = 0
+        self.traffic_idx = -1
 
         rospy.spin()
 
@@ -98,8 +99,7 @@ class WaypointUpdater(object):
             rospy.loginfo('waypoints Received - count:%d',len(waypoints.waypoints))
 
     def traffic_cb(self, msg):
-        # TODO: Callback for /traffic_waypoint message. Implement
-        pass
+        self.traffic_idx = msg.data
 
     def obstacle_cb(self, msg):
         # TODO: Callback for /obstacle_waypoint message. We will implement it later

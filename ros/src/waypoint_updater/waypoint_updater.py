@@ -6,6 +6,7 @@ import tf
 from std_msgs.msg import Int32
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
+from python_common.helper import MathHelper
 
 import math
 
@@ -26,8 +27,6 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 
 LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
 LOG = False # Set to true to enable logs
-MPH_TO_MPS = 0.44704 # Convert mph to m/s
-MAX_SPEED = 10.0 * MPH_TO_MPS # Speed limit (Carla is limited to 10 mph during real life testing)
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -65,7 +64,7 @@ class WaypointUpdater(object):
 
         for start in range(self.next_wp_idx,len(self.waypoints),LOOKAHEAD_WPS):
             stop = min(start+LOOKAHEAD_WPS,len(self.waypoints))
-            distances = [ WaypointUpdater.distance(self.current_pose.pose.position,
+            distances = [ MathHelper.distance(self.current_pose.pose.position,
                                                    self.waypoints[idx].pose.pose.position)
                           for idx in range(start,stop)]
             arg_min_idx = np.argmin(distances)
@@ -114,19 +113,6 @@ class WaypointUpdater(object):
     @staticmethod
     def set_waypoint_velocity(waypoints, waypoint, velocity):
         waypoints[waypoint].twist.twist.linear.x = velocity
-
-    @staticmethod
-    def distance(waypoints, wp1, wp2):
-        dist = 0
-        for i in range(wp1, wp2+1):
-            dist += WaypointUpdater.distance(waypoints[wp1].pose.pose.position,
-                                             waypoints[i].pose.pose.position)
-            wp1 = i
-        return dist
-
-    @staticmethod
-    def distance(a, b):
-        return math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
 
 if __name__ == '__main__':
     try:

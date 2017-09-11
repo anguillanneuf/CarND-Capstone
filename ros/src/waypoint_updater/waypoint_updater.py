@@ -25,7 +25,9 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
-LOG = False
+LOG = False # Set to true to enable logs
+MPH_TO_MPS = 0.44704 # Convert mph to m/s
+MAX_SPEED = 10.0 * MPH_TO_MPS # Speed limit (Carla is limited to 10 mph during real life testing)
 
 class WaypointUpdater(object):
     def __init__(self):

@@ -41,12 +41,7 @@ class PID(object):
         
         val = max(self.min, min(y, self.max))
 
-        if val > self.max:
-            val = self.max
-        elif val < self.min:
-            val = self.min
-        else:
-            self.int_val = sum(self.int_list)
+        self.int_val = sum(self.int_list)
         self.last_error = error
 
         return val

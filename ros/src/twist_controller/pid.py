@@ -3,6 +3,7 @@ import rospy
 MIN_NUM = float('-inf')
 MAX_NUM = float('inf')
 
+LOG = False # Set to True to enable logs
 
 class PID(object):
     def __init__(self, kp, ki, kd, mn=MIN_NUM, mx=MAX_NUM):
@@ -34,7 +35,10 @@ class PID(object):
         derivative = (error - self.last_error) / sample_time;
 
         y = self.kp * error + self.ki * self.int_val + self.kd * derivative;
-        # rospy.loginfo("P %.03f  I:%.03f, D:%.03f", self.kp * error, self.ki * self.int_val, self.kd * derivative)
+        
+        if LOG:
+            rospy.loginfo("P %.03f  I:%.03f, D:%.03f", self.kp * error, self.ki * self.int_val, self.kd * derivative)
+        
         val = max(self.min, min(y, self.max))
 
         if val > self.max:

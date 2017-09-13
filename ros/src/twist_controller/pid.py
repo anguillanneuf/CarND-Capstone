@@ -37,7 +37,7 @@ class PID(object):
         y = self.kp * error + self.ki * self.int_val + self.kd * derivative;
         
         if LOG:
-            rospy.loginfo("P %.03f  I:%.03f, D:%.03f", self.kp * error, self.ki * self.int_val, self.kd * derivative)
+            rospy.loginfo("P:%.03f, I:%.03f, D:%.03f", self.kp * error, self.ki * self.int_val, self.kd * derivative)
         
         val = max(self.min, min(y, self.max))
 

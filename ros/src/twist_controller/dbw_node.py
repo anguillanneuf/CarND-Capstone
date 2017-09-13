@@ -47,7 +47,7 @@ class DBWNode(object):
         steer_ratio = rospy.get_param('~steer_ratio', 14.8)
         max_lat_accel = rospy.get_param('~max_lat_accel', 3.)
         max_steer_angle = rospy.get_param('~max_steer_angle', 8.)
-        kp =rospy.get_param('~kp',0.2)
+        kp = rospy.get_param('~kp',0.2)
         ki = rospy.get_param('~ki',0.5)
         kd = rospy.get_param('~kd',0.001)
         min_speed = 0.1
@@ -62,13 +62,13 @@ class DBWNode(object):
                                          BrakeCmd, queue_size=1)
 
         # TODO: Create `TwistController` object
-        self.controller = Controller(kp,ki,kd,decel_limit,accel_limit,wheel_base, steer_ratio,
+        self.controller = Controller(kp, ki, kd, decel_limit, accel_limit, wheel_base, steer_ratio,
                                      min_speed, max_lat_accel, max_steer_angle)
 
         # TODO: Subscribe to all the topics you need to
         rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_cb)
-        rospy.Subscriber('/twist_cmd',TwistStamped,self.dbw_twist_cb)
-        rospy.Subscriber('/current_velocity',TwistStamped,self.current_vel_cb)
+        rospy.Subscriber('/twist_cmd', TwistStamped,self.dbw_twist_cb)
+        rospy.Subscriber('/current_velocity', TwistStamped, self.current_vel_cb)
 
         self.dbw_enabled = False
         self.current_linear_vel = 0
@@ -92,7 +92,7 @@ class DBWNode(object):
         self.target_linear_vel = msg.twist.linear.x
         self.target_angle_vel = msg.twist.angular.z
         if LOG:
-            rospy.loginfo('dbw_twist_cb recieved vel:%f, angl:%f', self.target_linear_vel,self.target_angle_vel)
+            rospy.loginfo('dbw_twist_cb recieved vel:%f, angl:%f', self.target_linear_vel, self.target_angle_vel)
 
     def loop(self):
         rate = rospy.Rate(50) # 50Hz

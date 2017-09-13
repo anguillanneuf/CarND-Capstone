@@ -31,6 +31,8 @@ that we have created in the `__init__` function.
 
 '''
 
+LOG = True # Set to True to enable logs
+
 class DBWNode(object):
     def __init__(self):
         rospy.init_node('dbw_node')
@@ -77,17 +79,20 @@ class DBWNode(object):
 
     def dbw_enabled_cb(self,msg):
         self.dbw_enabled = msg.data
-        # rospy.loginfo('dbw_enabled recieved:%r', self.dbw_enabled)
+        if LOG:
+            rospy.loginfo('dbw_enabled recieved:%r', self.dbw_enabled)
 
     def current_vel_cb(self,msg):
         self.current_linear_vel = msg.twist.linear.x
-        # rospy.loginfo('current_vel recieved:%f', self.current_linear_vel )
+        if LOG:
+            rospy.loginfo('current_vel recieved:%f', self.current_linear_vel)
 
     def dbw_twist_cb(self,msg):
         # TODO:
         self.target_linear_vel = msg.twist.linear.x
         self.target_angle_vel = msg.twist.angular.z
-        # rospy.loginfo('dbw_twist_cb recieved vel:%f, angl:%f', self.target_linear_vel,self.target_angle_vel )
+        if LOG:
+            rospy.loginfo('dbw_twist_cb recieved vel:%f, angl:%f', self.target_linear_vel,self.target_angle_vel)
 
     def loop(self):
         rate = rospy.Rate(50) # 50Hz
@@ -102,7 +107,8 @@ class DBWNode(object):
                                                                 dt)
             if self.dbw_enabled:
                 self.publish(throttle, brake, steering)
-                # rospy.loginfo('publish throttle:%f,brake:%f,steering:%f', throttle,brake,steering)
+                if LOG:
+                    rospy.loginfo('publish throttle:%f,brake:%f,steering:%f', throttle, brake, steering)
 
             rate.sleep()
 

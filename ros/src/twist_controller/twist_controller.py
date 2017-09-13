@@ -27,7 +27,7 @@ class Controller(object):
 
         val = self.pid.step(error,dt)
 
-        # rospy.loginfo("Target v  %.03f  Error : %.03f  Control:%.03f", target_linear_vel,error,val)
+        # rospy.logwarn("Target v  %.03f  Error : %.03f  Control:%.03f", target_linear_vel,error,val)
 
         # reference for yaw control
         # Ackermann Steering dynamics http://correll.cs.colorado.edu/?p=1869
@@ -35,6 +35,7 @@ class Controller(object):
         if val >=0:
             return val*self.accel_limit,0.0,steering
         else:
+            # rospy.logwarn("Target v  %.03f  Error : %.03f  Control:%.03f", target_linear_vel, error, val)
             if val*self.decel_limit <self.brake_deadband:
                 # rospy.logdebug("Dead band, %.03f",val*self.decel_limit)
                 return 0.0,0.0,steering

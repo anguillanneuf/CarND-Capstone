@@ -5,6 +5,7 @@ import numpy as np
 import tf
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
+from std_msgs.msg import Int32
 
 import math
 from scipy.interpolate import CubicSpline
@@ -36,18 +37,18 @@ class WaypointUpdater(object):
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
-
+        rospy.Subscriber('/traffic_waypoint', Int32,self.traffic_cb)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
         # TODO: Add other member variables you need below
-        velocity = rospy.get_param('/waypoint_loader/velocity',20)*0.27778
-        decel_limit = rospy.get_param('/dbw_node/decel_limit', -5.)
-        accel_limit = rospy.get_param('/dbw_node/accel_limit', 1.)
+        self.velocity = rospy.get_param('/waypoint_loader/velocity',20)*0.27778
+        accelerate_rate = rospy.get_param('~accelerate_rate', 1.)
+        brake_rate = rospy.get_param('~brake_rate', 1.)
         max_jerk = rospy.get_param('~max_jerk')
 
-        self.accel_cs, self.accel_distance = self.get_smooth_cubic_spline(velocity,accel_limit,max_jerk)
-        self.decel_cs, self.decel_distance = self.get_smooth_cubic_spline(velocity,abs(decel_limit),max_jerk)
+        self.accel_cs, self.accel_distance = self.get_smooth_cubic_spline(self.velocity,accelerate_rate,max_jerk)
+        self.decel_cs, self.decel_distance = self.get_smooth_cubic_spline(self.velocity,brake_rate,max_jerk)
 
         self.waypoints = None
         self.current_pose = None
@@ -75,7 +76,7 @@ class WaypointUpdater(object):
 
         d1 = jerk * t1**3/6
         d2 = d1 + v1*(t2-t1)+accel*(t2-t1)**2/2
-        d3 = d2 + v2*(t3-t2) +accel*(t3-t2)**2/2 - jerk *(t3-t2)**3/6
+        d3 = d2 + v2*(t3-t2)+accel*(t3-t2)**2/2 - jerk *(t3-t2)**3/6
 
         Ds = [0,d1,d2,d3]
 
@@ -105,9 +106,11 @@ class WaypointUpdater(object):
             next_wp = self.find_next_waypoint(pose)
             d0 = self.direct_distance(pose.position, self.waypoints[next_wp].pose.pose.position)
 
-        # curve for deacceleration for end of trip
-        self.waypoints[next_wp].twist.twist.linear.x = 0
-        
+        # curve for de-acceleration
+        stop = min(next_wp + LOOKAHEAD_WPS, len(self.waypoints))
+        for i in range(next_wp, stop):
+            self.waypoints[i].twist.twist.linear.x = 0
+
         for i in range(1,next_wp):
             d = self.distance(self.waypoints, next_wp -i, next_wp) -d0
             if d < self.decel_distance:
@@ -143,6 +146,10 @@ class WaypointUpdater(object):
                 self.waypoints[i+next_wp].twist.twist.linear.x = abs(self.accel_cs(d))
             else:
                 break
+
+        stop = min(next_wp + LOOKAHEAD_WPS, len(self.waypoints))
+        for i in range(next_wp, stop):
+            self.waypoints[i].twist.twist.linear.x = self.velocity
 
         return
 
@@ -188,11 +195,28 @@ class WaypointUpdater(object):
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
-        self.tl_waypoint = msg
-        # update the velocities of waypoints
-        if self.next_wp_idx < self.tl_waypoint:
-            self.update_speed_slowdown(self.waypoints[self.tl_waypoint],wp=self.tl_waypoint)
-            self.update_speed_speedup(self.waypoints[self.tl_waypoint], wp=self.tl_waypoint)
+        if self.tl_waypoint == -1:
+            if msg.data >self.next_wp_idx:
+                self.tl_waypoint = msg.data
+                self.update_speed_slowdown(self.waypoints[self.tl_waypoint], wp=self.tl_waypoint)
+        else:
+            if msg.data == -1:
+                # find next waypoint index
+                self.update_speed_speedup(self.current_pose.pose)
+                self.tl_waypoint = -1
+
+                self.next_wp_idx = self.find_next_waypoint(self.current_pose.pose, self.next_wp_idx)
+
+                # publish new final waypoints
+                lane = Lane()
+                lane.header.frame_id = '/world'
+                lane.header.stamp = rospy.Time.now()
+                start = self.next_wp_idx
+                stop = min(self.next_wp_idx + LOOKAHEAD_WPS, len(self.waypoints))
+                lane.waypoints = self.waypoints[start:stop]
+                self.final_waypoints_pub.publish(lane)
+                rospy.logwarn("Next waypoint:%d", self.next_wp_idx)
+
 
 
     def obstacle_cb(self, msg):

@@ -3,9 +3,10 @@
 import rospy
 import numpy as np
 import tf
+from std_msgs.msg import Int32
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
-from std_msgs.msg import Int32
+from python_common.helper import MathHelper
 
 import math
 from scipy.interpolate import CubicSpline
@@ -26,7 +27,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
-
+LOG = False # Set to true to enable logs
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -35,6 +36,8 @@ class WaypointUpdater(object):
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
+        rospy.Subscriber('/obstacle_waypoint', PoseStamped, self.obstacle_cb)
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
         rospy.Subscriber('/traffic_waypoint', Int32,self.traffic_cb)
@@ -114,7 +117,7 @@ class WaypointUpdater(object):
         for i in range(1,next_wp):
             d = self.distance(self.waypoints, next_wp -i, next_wp) -d0
             if d < self.decel_distance:
-                rospy.logwarn('slow down before :%f, udpate:%f',self.waypoints[(next_wp -i)].twist.twist.linear.x,self.decel_cs(d) )
+                # rospy.logwarn('slow down before :%f, udpate:%f',self.waypoints[(next_wp -i)].twist.twist.linear.x,self.decel_cs(d) )
                 self.waypoints[ (next_wp -i)].twist.twist.linear.x = abs(self.decel_cs(d))
             else:
                 break;
@@ -142,7 +145,7 @@ class WaypointUpdater(object):
         for i in range(wp_trip_count-next_wp):
             d = self.distance(self.waypoints,next_wp, i+next_wp) +d0
             if d<self.accel_distance:
-                rospy.logwarn('speed up before :%f, udpate:%f',self.waypoints[i+next_wp].twist.twist.linear.x,self.accel_cs(d))
+                # rospy.logwarn('speed up before :%f, udpate:%f',self.waypoints[i+next_wp].twist.twist.linear.x,self.accel_cs(d))
                 self.waypoints[i+next_wp].twist.twist.linear.x = abs(self.accel_cs(d))
             else:
                 break
@@ -182,7 +185,7 @@ class WaypointUpdater(object):
                 lane.waypoints = self.waypoints[start:stop]
                 self.final_waypoints_pub.publish(lane)
 
-                rospy.logwarn("Next waypoint:%d",self.next_wp_idx)
+                # rospy.logwarn("Next waypoint:%d",self.next_wp_idx)
 
     def waypoints_cb(self, waypoints):
         # TODO: Done Implement
@@ -215,7 +218,7 @@ class WaypointUpdater(object):
                 stop = min(self.next_wp_idx + LOOKAHEAD_WPS, len(self.waypoints))
                 lane.waypoints = self.waypoints[start:stop]
                 self.final_waypoints_pub.publish(lane)
-                rospy.logwarn("Next waypoint:%d", self.next_wp_idx)
+                # rospy.logwarn("Next waypoint:%d", self.next_wp_idx)
 
 
 
@@ -257,10 +260,12 @@ class WaypointUpdater(object):
 
         return closest_wp_idx
 
+    @staticmethod
     def get_waypoint_velocity(self, waypoint):
         return waypoint.twist.twist.linear.x
 
-    def set_waypoint_velocity(self, waypoints, waypoint, velocity):
+    @staticmethod
+    def set_waypoint_velocity(waypoints, waypoint, velocity):
         waypoints[waypoint].twist.twist.linear.x = velocity
 
     def distance(self, waypoints, wp1, wp2):

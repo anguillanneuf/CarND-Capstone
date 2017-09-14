@@ -28,7 +28,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
-T_STEP_SIZE = 0.02 # time step for slowdown or speedup
+T_STEP_SIZE = 0.1 # time step for slowdown or speedup
 LOG = False # Set to true to enable logs
 
 class WaypointUpdater(object):
@@ -119,9 +119,9 @@ class WaypointUpdater(object):
         brake_start_wp = next_wp
 
         Ds = []
-        Xs =[]
-        Ys =[]
-        Oz =[]
+        Xs = []
+        Ys = []
+        Oz = []
 
         for i in range(1,next_wp):
             d = self.distance(self.waypoints, next_wp -i, next_wp) -d0
@@ -134,6 +134,7 @@ class WaypointUpdater(object):
                 brake_start_wp = next_wp -i
                 break
 
+        rospy.logwarn("%s ", Ds)
         Cs_x = CubicSpline(Ds,Xs,bc_type='natural')
         Cs_y = CubicSpline(Ds,Ys,bc_type='natural')
         Cs_oz = CubicSpline(Ds,Oz,bc_type='natural')
@@ -166,11 +167,10 @@ class WaypointUpdater(object):
         #                  wp.pose.pose.orientation.z, wp.twist.twist.linear.x)
 
         # rospy.logdebug("brake_start_wp: %d", brake_start_wp)
-        # rospy.logdebug("augmented waypoints")
-        # for wp, d in zip(augmented_waypoints, d_fitted):
-        #    rospy.logdebug("wp x:%.03f,y:%.03f,z:%.03f,yaw:%.03f,v:%.03f, d:%.03f", wp.pose.pose.position.x,
-        #                  wp.pose.pose.position.y, wp.pose.pose.position.z,
-        #                  wp.pose.pose.orientation.z, wp.twist.twist.linear.x, d)
+        rospy.logwarn("augmented waypoints,brake_start_wp: %d ",brake_start_wp)
+        for wp in augmented_waypoints[::-1]:
+           rospy.logwarn("wp x:%.03f,y:%.03f,yaw:%.03f,v:%.03f", wp.pose.pose.position.x,
+                         wp.pose.pose.position.y,wp.pose.pose.orientation.z, wp.twist.twist.linear.x)
         # reverse the list
         return augmented_waypoints[::-1], brake_start_wp
 
@@ -194,16 +194,15 @@ class WaypointUpdater(object):
         speedup_distance = d_fitted[-1]
         speedup_stop_wp = next_wp
 
-
-        Ds =[]
-        Xs =[]
+        Ds = []
+        Xs = []
         Ys = []
         Oz = []
         if d0 >0:
-            Ds = Ds.append(d_fitted[0])
-            Xs = Xs.append(pose.position.x)
-            Ys = Ys.append(pose.position.y)
-            Oz = Oz.append(pose.orientation.z)
+            Ds.append(d_fitted[0])
+            Xs.append(pose.position.x)
+            Ys.append(pose.position.y)
+            Oz.append(pose.orientation.z)
 
         for i in range(0, next_wp):
             d = self.distance(self.waypoints, next_wp, next_wp + i) + d0 + d_fitted[v_idx]
@@ -230,7 +229,7 @@ class WaypointUpdater(object):
 
         augmented_waypoints = []
 
-        for i in range(len(d_fitted)):
+        for i in range(1,len(d_fitted)):
             p = Waypoint()
             p.pose.pose.position.x = Xfitted[i]
             p.pose.pose.position.y = Yfitted[i]
@@ -252,11 +251,10 @@ class WaypointUpdater(object):
         #                   wp.pose.pose.orientation.z, wp.twist.twist.linear.x)
         #
         # rospy.logdebug("speedup_stop_wp: %d", speedup_stop_wp)
-        # rospy.logdebug("augmented waypoints")
-        # for wp,d in zip(augmented_waypoints,d_fitted):
-        #     rospy.logdebug("wp x:%.03f,y:%.03f,z:%.03f,yaw:%.03f,v:%.03f, d:%.03f", wp.pose.pose.position.x,
-        #                   wp.pose.pose.position.y, wp.pose.pose.position.z,
-        #                   wp.pose.pose.orientation.z, wp.twist.twist.linear.x,d)
+        rospy.logwarn("augmented waypoints")
+        for wp in augmented_waypoints:
+            rospy.logwarn("wp x:%.03f,y:%.03f,yaw:%.03f,v:%.03f", wp.pose.pose.position.x,
+                          wp.pose.pose.position.y, wp.pose.pose.orientation.z, wp.twist.twist.linear.x)
 
 
         return augmented_waypoints, speedup_stop_wp
@@ -268,7 +266,7 @@ class WaypointUpdater(object):
         # rospy.loginfo('current_pose Received - x:%d, y:%d,z:%d', msg.pose.position.x, msg.pose.position.y,
         #              msg.pose.position.z)
         # get next waypoint index
-        if self.final_waypoints is not None:
+        if self.waypoints is not None:
             # first time to update speed for acceleration to target speed and set the stop point
             if self.current_pose is None:
                 self.current_pose = msg
@@ -284,29 +282,34 @@ class WaypointUpdater(object):
 
             if next_wp_idx > self.next_wp_idx:
                 rospy.logwarn("Next waypoint:%d", next_wp_idx)
+
             # check if traffic light is present:
             if next_wp_idx >= self.brake_start_wp:
                 # publish decelleration waypoints
-                passed_wp_idx = self.find_next_waypoint(self.augumented_wps,self.current_pose.pse,0)
+                passed_wp_idx = self.find_next_waypoint(self.augmented_wps,self.current_pose.pose,0)
                 self.augmented_wps = self.augmented_wps[passed_wp_idx:]
                 lane.waypoints = self.augmented_wps
+                rospy.logwarn("publish brake wps, %d", len(lane.waypoints))
 
             elif next_wp_idx < self.speedup_stop_wp:
                 # publish acceleration waypoints:
-                passed_wp_idx = self.find_next_waypoint(self.augumented_wps, self.current_pose.pse, 0)
+                passed_wp_idx = self.find_next_waypoint(self.augmented_wps, self.current_pose.pose, 0)
                 self.augmented_wps = self.augmented_wps[passed_wp_idx:]
                 count = len(self.augmented_wps)
                 lane.waypoints = self.augmented_wps
                 if count< LOOKAHEAD_WPS:
                     stop = min(self.speedup_stop_wp + LOOKAHEAD_WPS -count,self.total_wp_num)
                     lane.waypoints += self.waypoints[self.speedup_stop_wp:stop]
+
+                rospy.logwarn("publish speedup wps, %d", len(lane.waypoints))
             else:
                 # publish normal waypoints
-                if next_wp_idx > self.next_wp_idx:
-                    stop = min(next_wp_idx + LOOKAHEAD_WPS,self.total_wp_num)
-                    lane.waypoints = self.waypoints[next_wp_idx:stop]
-                    self.next_wp_idx = next_wp_idx
+                stop = min(next_wp_idx + LOOKAHEAD_WPS,self.total_wp_num)
+                lane.waypoints = self.waypoints[next_wp_idx:stop]
 
+                # rospy.logwarn("publish normal wps, %d,",len(lane.waypoints))
+
+            self.next_wp_idx = next_wp_idx
             self.final_waypoints_pub.publish(lane)
 
 
@@ -326,7 +329,7 @@ class WaypointUpdater(object):
         if self.tl_waypoint == -1 and msg.data > self.next_wp_idx:
             self.tl_waypoint = msg.data
             self.augumented_wps, self.brake_start_wp =\
-                    self.update_speed_deceleration(self.waypoints[self.tl_waypoint])
+                    self.update_speed_deceleration(self.waypoints[self.tl_waypoint].pose.pose)
 
         # traffic light previous is red
         elif self.tl_waypoint is not -1:
@@ -339,7 +342,7 @@ class WaypointUpdater(object):
             # traffic light is updated with new position
             else:
                 self.augumented_wps, self.brake_start_wp = \
-                self.update_speed_deceleration(self.waypoints[self.tl_waypoint])
+                self.update_speed_deceleration(self.waypoints[self.tl_waypoint].pose.pose)
 
     def obstacle_cb(self, msg):
         # TODO: Callback for /obstacle_waypoint message. We will implement it later
@@ -361,6 +364,7 @@ class WaypointUpdater(object):
                                                                 pose.orientation.w])
 
         wp_trip_count = len(waypoints)
+        closest_wp_idx = 0
         for i in range(0, len(waypoints), LOOKAHEAD_WPS):
             start = i+start_wp
             stop = min(start + LOOKAHEAD_WPS, start + len(waypoints))

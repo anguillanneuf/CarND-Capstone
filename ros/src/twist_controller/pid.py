@@ -2,6 +2,7 @@
 MIN_NUM = float('-inf')
 MAX_NUM = float('inf')
 
+LOG = False # Set to True to enable logs
 
 class PID(object):
     def __init__(self, kp, ki, kd, mn=MIN_NUM, mx=MAX_NUM):

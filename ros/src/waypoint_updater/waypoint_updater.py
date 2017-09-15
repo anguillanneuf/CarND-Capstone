@@ -112,10 +112,12 @@ class WaypointUpdater(object):
         next_wp = self.find_next_waypoint(self.waypoints,target_pose)
         d0 = self.direct_distance(target_pose.position, self.waypoints[next_wp].pose.pose.position)
 
-        d_fitted,v_fitted = self.get_smooth_cubic_spline(self.current_vel,self.brake_rate,self.max_jerk)
+        d_fitted,v_fitted = self.get_smooth_cubic_spline(self.velocity,self.brake_rate,self.max_jerk)
 
         # curve for de-acceleration
         brake_distance = d_fitted[-1]
+        # TODO: check if car is close to traffic point, then generate the path with current velocity
+        
         brake_start_wp = next_wp
 
         Ds = []
@@ -134,7 +136,6 @@ class WaypointUpdater(object):
                 brake_start_wp = next_wp -i
                 break
 
-        rospy.logwarn("%s ", Ds)
         Cs_x = CubicSpline(Ds,Xs,bc_type='natural')
         Cs_y = CubicSpline(Ds,Ys,bc_type='natural')
         Cs_oz = CubicSpline(Ds,Oz,bc_type='natural')

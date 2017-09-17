@@ -110,14 +110,14 @@ class WaypointUpdater(object):
 
 
         next_wp = self.find_next_waypoint(self.waypoints,target_pose)
-        d0 = self.direct_distance(target_pose.position, self.waypoints[next_wp].pose.pose.position)
+        d0 = WaypointUpdater.direct_distance(target_pose.position, self.waypoints[next_wp].pose.pose.position)
 
         d_fitted,v_fitted = self.get_smooth_cubic_spline(self.velocity,self.brake_rate,self.max_jerk)
 
         # curve for de-acceleration
         brake_distance = d_fitted[-1]
         # TODO: check if car is close to traffic point, then generate the path with current velocity
-        
+
         brake_start_wp = next_wp
 
         Ds = []
@@ -126,7 +126,7 @@ class WaypointUpdater(object):
         Oz = []
 
         for i in range(1,next_wp):
-            d = self.distance(self.waypoints, next_wp -i, next_wp) -d0
+            d = WaypointUpdater.distance(self.waypoints, next_wp -i, next_wp) -d0
             Ds.append(d)
             Xs.append(self.waypoints[next_wp-i].pose.pose.position.x)
             Ys.append(self.waypoints[next_wp-i].pose.pose.position.y)
@@ -183,7 +183,7 @@ class WaypointUpdater(object):
         '''
 
         next_wp = self.find_next_waypoint(self.waypoints,pose)
-        d0 = self.direct_distance(pose.position, self.waypoints[next_wp].pose.pose.position)
+        d0 = WaypointUpdater.direct_distance(pose.position, self.waypoints[next_wp].pose.pose.position)
 
         d_fitted, v_fitted = self.get_smooth_cubic_spline(self.velocity, self.accelerate_rate, self.max_jerk)
 
@@ -205,7 +205,7 @@ class WaypointUpdater(object):
             Oz.append(pose.orientation.z)
 
         for i in range(0, next_wp):
-            d = self.distance(self.waypoints, next_wp, next_wp + i) + d0 + d_fitted[v_idx]
+            d = WaypointUpdater.distance(self.waypoints, next_wp, next_wp + i) + d0 + d_fitted[v_idx]
 
             Ds.append(d)
             Xs.append(self.waypoints[next_wp + i].pose.pose.position.x)
@@ -370,7 +370,7 @@ class WaypointUpdater(object):
         for i in range(0, len(waypoints), LOOKAHEAD_WPS):
             start = i+start_wp
             stop = min(start + LOOKAHEAD_WPS, start + len(waypoints))
-            distances = [self.direct_distance(pose.position, waypoints[idx % wp_trip_count].pose.pose.position)
+            distances = [WaypointUpdater.direct_distance(pose.position, waypoints[idx % wp_trip_count].pose.pose.position)
                          for idx in range(start, stop)]
             arg_min_idx = np.argmin(distances)
             # stop searching
@@ -390,14 +390,15 @@ class WaypointUpdater(object):
         return closest_wp_idx
 
     @staticmethod
-    def get_waypoint_velocity(self, waypoint):
+    def get_waypoint_velocity(waypoint):
         return waypoint.twist.twist.linear.x
 
     @staticmethod
     def set_waypoint_velocity(waypoints, waypoint, velocity):
         waypoints[waypoint].twist.twist.linear.x = velocity
 
-    def distance(self, waypoints, wp1, wp2):
+    @staticmethod
+    def distance(waypoints, wp1, wp2):
         dist = 0
         dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
         for i in range(wp1, wp2+1):
@@ -405,8 +406,8 @@ class WaypointUpdater(object):
             wp1 = i
         return dist
 
-
-    def direct_distance(self,pos1,pos2):
+    @staticmethod
+    def direct_distance(pos1,pos2):
         return  math.sqrt((pos1.x - pos2.x) ** 2 + (pos1.y - pos2.y) ** 2 + (pos1.z - pos2.z) ** 2)
 
 

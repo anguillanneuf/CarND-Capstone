@@ -69,12 +69,15 @@ class WaypointLoader(object):
 
     def publish(self, waypoints):
         rate = rospy.Rate(40)
+        count = 0
         while not rospy.is_shutdown():
             lane = Lane()
             lane.header.frame_id = '/world'
             lane.header.stamp = rospy.Time(0)
             lane.waypoints = waypoints
-            self.pub.publish(lane)
+            if count < 40:
+                self.pub.publish(lane)
+                count +=1
             rate.sleep()
 
 

@@ -27,7 +27,7 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 10 # Number of waypoints we will publish. You can change this number
 T_STEP_SIZE = 0.05 #time step for slowdown or speedup
 LOG = False # Set to true to enable logs
 
@@ -311,7 +311,7 @@ class WaypointUpdater(object):
             next_wp_idx = self.find_next_waypoint(self.waypoints,self.current_pose.pose,self.next_wp_idx)
 
             if next_wp_idx > self.next_wp_idx:
-                rospy.logwarn("Np:%d, x:%.03f,y%.03f", next_wp_idx,self.current_pose.pose.position.x,self.current_pose.pose.position.y)
+                rospy.logwarn("Np:%d, x:%.03f,y:%.03f", next_wp_idx,self.current_pose.pose.position.x,self.current_pose.pose.position.y)
 
             # check if traffic light is present:
             if next_wp_idx >= self.brake_start_wp:
@@ -319,8 +319,8 @@ class WaypointUpdater(object):
                 passed_wp_idx = self.find_next_waypoint(self.augmented_wps,self.current_pose.pose,0)
                 self.augmented_wps = self.augmented_wps[passed_wp_idx:]
                 lane.waypoints = self.augmented_wps
-                if len(lane.waypoints) > 0:
-                    rospy.logwarn("publish brake wps %d",len(lane.waypoints))
+                # if len(lane.waypoints) > 0:
+                #    rospy.logwarn("publish brake wps %d",len(lane.waypoints))
 
             elif next_wp_idx < self.speedup_stop_wp:
                 # publish acceleration waypoints:
@@ -383,7 +383,7 @@ class WaypointUpdater(object):
             return
 
         next_tl_wp = self.current_tf_wp
-        next_light = msg.lights[0]
+        next_light = None
 
         for light in msg.lights:
             light.pose.pose.position.z = 0
@@ -395,21 +395,21 @@ class WaypointUpdater(object):
         if self.is_tl_red:
 
             if next_tl_wp > self.current_tf_wp:
-                rospy.logwarn("travel through last trafflic light:%d",self.current_tf_wp)
+                rospy.logwarn("travel through last trafflic light at Waypoint:%d",self.current_tf_wp)
                 self.is_tl_red = False
                 self.brake_start_wp = self.total_wp_num
                 self.augmented_wps, self.speedup_stop_wp = self.update_speed_speedup(self.current_pose.pose)
             elif next_light.state == 2:
                 self.is_tl_red = False
-                rospy.logwarn("traffic light:%d is Green", next_tl_wp)
+                rospy.logwarn("traffic light at Waypoint:%d is Green", next_tl_wp)
                 self.brake_start_wp = self.total_wp_num
                 self.augmented_wps, self.speedup_stop_wp = self.update_speed_speedup(self.current_pose.pose)
 
-        else:
+        elif next_light is not None:
             d = self.distance(self.waypoints, self.next_wp_idx, next_tl_wp)
             if d < self.min_brake_distance + 40 and next_light.state < 2:
                 self.is_tl_red = True
-                rospy.logwarn("traffic light:%d is Red", next_tl_wp)
+                rospy.logwarn("traffic light at Waypoint:%d is Red", next_tl_wp)
                 self.augmented_wps, self.brake_start_wp = self.update_speed_deceleration(
                         self.waypoints[next_tl_wp-25].pose.pose)
 

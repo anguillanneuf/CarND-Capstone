@@ -75,26 +75,46 @@ class WaypointUpdater(object):
         :param speed: target velocity
         :param accel: maximum acceleration
         :param jerk:  maximum jerk
-        :return: a cubic spline object for fit later, and distance for spline
+        :return: list of calculated distances, list of calculated velocities
         '''
 
-        t1 = accel/jerk
-        t2 = (speed - jerk*t1**2)/accel+t1
-        t3 = t2 + t1
-        Ts = [0,t1,t2,t3]
-        v1 = jerk*t1**2/2
-        v2 = v1 + accel*(t2-t1)
-        v3 = speed
+        # for speed is zero, return empty list
+        if speed < 0.0001:
+            return [], []
 
-        d1 = jerk * t1**3/6
-        d2 = d1 + v1*(t2-t1)+accel*(t2-t1)**2/2
-        d3 = d2 + v2*(t3-t2)+accel*(t3-t2)**2/2 - jerk *(t3-t2)**3/6
+        t1 = accel/np.float(jerk)
+        v1 = jerk * t1 ** 2 / 2
+        t_end = t1
 
-        Ds = [0,d1,d2,d3]
+        if speed <= v1*2:
+            #  acceleration will not reach max value
+            t1 = math.sqrt(speed/jerk)
+            v1 = jerk * t1 **2/2
+            a1 = jerk * t1
+            t_end = t1*2
+            d1 = jerk * t1 ** 3 / 6
+            d2 = d1 + v1 * (t_end - t1) + a1 * (t_end - t1) ** 2 / 2 - jerk * (t_end - t1) ** 3 / 6
+
+            Ts = [0, t1, t_end]
+            Ds = [0, d1, d2]
+
+        else:
+            # acceleration increases to max value, holds for t2 and decrease to 0
+            t2 = (speed - jerk*t1**2)/accel+t1
+            v2 = v1 + accel * (t2 - t1)
+            t_end = t2 + t1
+            # v3 = speed
+
+            d1 = jerk * t1 ** 3 / 6
+            d2 = d1 + v1 * (t2 - t1) + accel * (t2 - t1) ** 2 / 2
+            d3 = d2 + v2 * (t_end - t2) + accel * (t_end - t2) ** 2 / 2 - jerk * (t_end - t2) ** 3 / 6
+
+            Ts = [0,t1,t2,t_end]
+            Ds = [0, d1, d2, d3]
 
         cs_d = CubicSpline(Ts,Ds,bc_type='natural')
         cs_v = cs_d.derivative(nu=1)
-        ts = np.arange(0,t3,T_STEP_SIZE)
+        ts = np.arange(0,t_end,T_STEP_SIZE)
 
         d_fitted = cs_d(ts)
         v_fitted = cs_v(ts)
@@ -114,10 +134,11 @@ class WaypointUpdater(object):
 
         d_fitted,v_fitted = self.get_smooth_cubic_spline(self.velocity,self.brake_rate,self.max_jerk)
 
+        if len(d_fitted) < 2:
+            return [], self.total_wp_num
+
         # curve for de-acceleration
         brake_distance = d_fitted[-1]
-        # TODO: check if car is close to traffic point, then generate the path with current velocity
-        
         brake_start_wp = next_wp
 
         Ds = []
@@ -187,6 +208,8 @@ class WaypointUpdater(object):
 
         d_fitted, v_fitted = self.get_smooth_cubic_spline(self.velocity, self.accelerate_rate, self.max_jerk)
 
+        if len(d_fitted) < 2:
+            return [], -1
         # curve for acceleration
 
         # if current velocity is not zero, find the closest entry in generated trajectory where v ~ current velocity
@@ -290,7 +313,8 @@ class WaypointUpdater(object):
                 passed_wp_idx = self.find_next_waypoint(self.augmented_wps,self.current_pose.pose,0)
                 self.augmented_wps = self.augmented_wps[passed_wp_idx:]
                 lane.waypoints = self.augmented_wps
-                rospy.logwarn("publish brake wps %d",len(lane.waypoints))
+                #if len(lane.waypoints) > 0:
+                #    rospy.logwarn("publish brake wps %d",len(lane.waypoints))
 
             elif next_wp_idx < self.speedup_stop_wp:
                 # publish acceleration waypoints:
@@ -298,7 +322,8 @@ class WaypointUpdater(object):
                 self.augmented_wps = self.augmented_wps[passed_wp_idx:]
                 count = len(self.augmented_wps)
                 lane.waypoints = self.augmented_wps
-                rospy.logwarn("publish speedup wps, %d", count)
+                #if passed_wp_idx>0:
+                #    rospy.logwarn("publish speedup wps, %d", count)
                 if count< LOOKAHEAD_WPS:
                     stop = min(self.speedup_stop_wp + LOOKAHEAD_WPS -count,self.total_wp_num)
                     lane.waypoints = lane.waypoints + self.waypoints[self.speedup_stop_wp:stop]

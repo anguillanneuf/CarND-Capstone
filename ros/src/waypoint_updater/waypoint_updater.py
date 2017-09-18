@@ -358,7 +358,6 @@ class WaypointUpdater(object):
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
         # traffic light state = red is detected
-        rospy.logwarn("traffic light msg recieved, %d", msg.data)
         if self.tl_waypoint == -1 and msg.data > self.next_wp_idx:
             self.tl_waypoint = msg.data
             self.augmented_wps, self.brake_start_wp =\

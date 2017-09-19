@@ -54,8 +54,6 @@ class WaypointUpdater(object):
         self.brake_rate = rospy.get_param('~brake_rate', 1.)
         self.max_jerk = rospy.get_param('~max_jerk')
 
-        # self.accel_ds, self.accel_vs = self.get_smooth_cubic_spline(self.velocity,self.accelerate_rate,self.max_jerk)
-        # self.decel_ds, self.decel_vs = self.get_smooth_cubic_spline(self.velocity,self.brake_rate,self.max_jerk)
         # calculate minimum brake distance
         distances,_ = self.get_smooth_cubic_spline(self.velocity,self.brake_rate,self.max_jerk)
         self.min_brake_distance = distances[-1]
@@ -127,16 +125,12 @@ class WaypointUpdater(object):
 
         return d_fitted,v_fitted
 
-    def update_speed_deceleration(self, target_pose):
+    def update_speed_deceleration(self, stop_wp):
         '''
         update speed if car needs to stop at a position, it follows a slow-down to position and speedup afterwards
         :param pose: position where car stops
         :return: None
         '''
-
-
-        next_wp = self.find_next_waypoint(self.waypoints,target_pose)
-        d0 = WaypointUpdater.direct_distance(target_pose.position, self.waypoints[next_wp].pose.pose.position)
 
         d_fitted,v_fitted = self.get_smooth_cubic_spline(self.velocity,self.brake_rate,self.max_jerk)
 
@@ -145,22 +139,29 @@ class WaypointUpdater(object):
 
         # curve for de-acceleration
         brake_distance = d_fitted[-1]
-        brake_start_wp = next_wp
+
 
         Ds = []
         Xs = []
         Ys = []
         Oz = []
 
-        for i in range(1,next_wp):
-            d = WaypointUpdater.distance(self.waypoints, next_wp -i, next_wp) -d0
+        d = 0
+        Ds.append(d)
+        Xs.append(self.waypoints[stop_wp].pose.pose.position.x)
+        Ys.append(self.waypoints[stop_wp].pose.pose.position.y)
+        Oz.append(self.waypoints[stop_wp].pose.pose.orientation.z)
+        brake_start_wp = stop_wp
+
+        for i in range(stop_wp-1,0,-1):
+            d += WaypointUpdater.distance(self.waypoints, i, i+1)
             Ds.append(d)
-            Xs.append(self.waypoints[next_wp-i].pose.pose.position.x)
-            Ys.append(self.waypoints[next_wp-i].pose.pose.position.y)
-            Oz.append(self.waypoints[next_wp-i].pose.pose.orientation.z)
+            Xs.append(self.waypoints[i].pose.pose.position.x)
+            Ys.append(self.waypoints[i].pose.pose.position.y)
+            Oz.append(self.waypoints[i].pose.pose.orientation.z)
 
             if d > brake_distance:
-                brake_start_wp = next_wp -i
+                brake_start_wp = i
                 break
 
         Cs_x = CubicSpline(Ds,Xs,bc_type='natural')
@@ -202,15 +203,15 @@ class WaypointUpdater(object):
         return augmented_waypoints[::-1], brake_start_wp
 
 
-    def update_speed_speedup(self, pose):
+    def update_speed_speedup(self, current_position):
         '''
         update speed if car needs to stop at a position, it follows a slow-down to position and speedup afterwards
         :param pose: position where car stops
         :return: None
         '''
 
-        next_wp = self.find_next_waypoint(self.waypoints,pose)
-        d0 = WaypointUpdater.direct_distance(pose.position, self.waypoints[next_wp].pose.pose.position)
+        next_wp = self.find_next_waypoint(self.waypoints,current_position,self.next_wp_idx)
+        d0 = WaypointUpdater.direct_distance(current_position.position, self.waypoints[next_wp].pose.pose.position)
 
         d_fitted, v_fitted = self.get_smooth_cubic_spline(self.velocity, self.accelerate_rate, self.max_jerk)
 
@@ -229,19 +230,19 @@ class WaypointUpdater(object):
         Oz = []
         if d0 >0:
             Ds.append(d_fitted[0])
-            Xs.append(pose.position.x)
-            Ys.append(pose.position.y)
-            Oz.append(pose.orientation.z)
+            Xs.append(current_position.position.x)
+            Ys.append(current_position.position.y)
+            Oz.append(current_position.orientation.z)
 
-        for i in range(0, next_wp):
-            d = WaypointUpdater.distance(self.waypoints, next_wp, next_wp + i) + d0 + d_fitted[v_idx]
+        for i in range(next_wp,len(self.waypoints)):
+            d = WaypointUpdater.distance(self.waypoints, next_wp, i) + d0 + d_fitted[v_idx]
 
             Ds.append(d)
-            Xs.append(self.waypoints[next_wp + i].pose.pose.position.x)
-            Ys.append(self.waypoints[next_wp + i].pose.pose.position.y)
-            Oz.append(self.waypoints[next_wp + i].pose.pose.orientation.z)
+            Xs.append(self.waypoints[i].pose.pose.position.x)
+            Ys.append(self.waypoints[i].pose.pose.position.y)
+            Oz.append(self.waypoints[i].pose.pose.orientation.z)
             if d > speedup_distance:
-                speedup_stop_wp = next_wp + i
+                speedup_stop_wp = i
                 break
 
         Cs_x = CubicSpline(Ds, Xs, bc_type='natural')
@@ -311,7 +312,7 @@ class WaypointUpdater(object):
             next_wp_idx = self.find_next_waypoint(self.waypoints,self.current_pose.pose,self.next_wp_idx)
 
             if next_wp_idx > self.next_wp_idx:
-                rospy.logwarn("Np:%d, x:%.03f,y:%.03f", next_wp_idx,self.current_pose.pose.position.x,self.current_pose.pose.position.y)
+                rospy.logwarn("Next WayPoint:%d", next_wp_idx)
 
             # check if traffic light is present:
             if next_wp_idx >= self.brake_start_wp:
@@ -361,7 +362,7 @@ class WaypointUpdater(object):
         if self.tl_waypoint == -1 and msg.data > self.next_wp_idx:
             self.tl_waypoint = msg.data
             self.augmented_wps, self.brake_start_wp =\
-                    self.update_speed_deceleration(self.waypoints[self.tl_waypoint].pose.pose)
+                    self.update_speed_deceleration(self.tl_waypoint)
 
         # traffic light previous is red
         elif self.tl_waypoint is not -1:
@@ -374,7 +375,7 @@ class WaypointUpdater(object):
             # traffic light is updated with new position
             else:
                 self.augmented_wps, self.brake_start_wp = \
-                self.update_speed_deceleration(self.waypoints[self.tl_waypoint].pose.pose)
+                self.update_speed_deceleration(self.tl_waypoint)
 
     def traffic_lights_cb(self,msg):
         # rospy.logwarn("traffic lights count %d", len(msg.lights))
@@ -386,14 +387,13 @@ class WaypointUpdater(object):
 
         for light in msg.lights:
             light.pose.pose.position.z = 0
-            next_tl_wp = self.find_next_waypoint(self.waypoints, light.pose.pose)
+            next_tl_wp = self.find_next_waypoint(self.waypoints, light.pose.pose,self.current_tf_wp)
             if next_tl_wp > self.next_wp_idx:
                 next_light = light
                 break
 
         if self.is_tl_red:
-
-            if next_tl_wp > self.current_tf_wp:
+            if next_tl_wp > self.current_tf_wp or next_light is None:
                 rospy.logwarn("travel through last trafflic light at Waypoint:%d",self.current_tf_wp)
                 self.is_tl_red = False
                 self.brake_start_wp = self.total_wp_num
@@ -406,13 +406,13 @@ class WaypointUpdater(object):
 
         elif next_light is not None:
             d = self.distance(self.waypoints, self.next_wp_idx, next_tl_wp)
-            if d < self.min_brake_distance + 40 and next_light.state < 2:
+            if d < self.min_brake_distance + 40 and next_light.state < 2 and next_tl_wp > self.current_tf_wp:
                 self.is_tl_red = True
                 rospy.logwarn("traffic light at Waypoint:%d is Red", next_tl_wp)
-                self.augmented_wps, self.brake_start_wp = self.update_speed_deceleration(
-                        self.waypoints[next_tl_wp-25].pose.pose)
+                self.augmented_wps, self.brake_start_wp = self.update_speed_deceleration(next_tl_wp-25)
+                self.current_tf_wp = next_tl_wp
 
-        self.current_tf_wp = next_tl_wp
+
 
 
     def obstacle_cb(self, msg):
@@ -429,34 +429,30 @@ class WaypointUpdater(object):
         :param start_wp: start waypoint index for search, default 0
         :return: index of next waypoint
         '''
-        (_, _, yaw) = tf.transformations.euler_from_quaternion([pose.orientation.x,
-                                                                pose.orientation.y,
-                                                                pose.orientation.z,
-                                                                pose.orientation.w])
 
-        wp_trip_count = len(waypoints)
-        closest_wp_idx = start_wp
-        for i in range(0, len(waypoints), LOOKAHEAD_WPS):
-            start = i+start_wp
-            stop = min(start + LOOKAHEAD_WPS, start + len(waypoints))
-            distances = [WaypointUpdater.direct_distance(pose.position, waypoints[idx % wp_trip_count].pose.pose.position)
-                         for idx in range(start, stop)]
-            arg_min_idx = np.argmin(distances)
-            # stop searching
-            if arg_min_idx < (stop - start - 1) or stop == len(waypoints):
-                closest_wp_idx = (start + arg_min_idx) % wp_trip_count
-                y_wp = waypoints[closest_wp_idx].pose.pose.position.y
-                x_wp = waypoints[closest_wp_idx].pose.pose.position.x
-                y = pose.position.y
-                x = pose.position.x
-                heading = math.atan2(y_wp - y, x_wp - x)
+        d_min = float('inf')
+        next_wp = start_wp
 
-                if math.fabs(heading - yaw) > math.pi / 3:
-                    closest_wp_idx += 1
-                break
+        for i in range(start_wp,len(waypoints)):
+            # only for comparision not necessary to calulate sqaure root .
+            d = WaypointUpdater.distance_2D_square(pose.position, waypoints[i].pose.pose.position)
+            next_wp = i
+            if d < d_min:
+                d_min = d
+            else:
+                # calculate angle between two vectors v1=x1 + y1*i, v2= x2 + y2*i
+                x1 = self.waypoints[i].pose.pose.position.x - self.waypoints[i-1].pose.pose.position.x
+                y1 = self.waypoints[i].pose.pose.position.y - self.waypoints[i-1].pose.pose.position.y
+                x2 = pose.position.x - self.waypoints[i-1].pose.pose.position.x
+                y2 = pose.position.y - self.waypoints[i-1].pose.pose.position.y
+                # we only need to check if cos_theta sign to determin the angle is >90
+                cos_theta_sign= x1*x2 + y1*y2
 
+                if cos_theta_sign < 0:
+                    next_wp = i -1
+                    break
 
-        return closest_wp_idx
+        return next_wp
 
     @staticmethod
     def get_waypoint_velocity(waypoint):
@@ -478,6 +474,10 @@ class WaypointUpdater(object):
     @staticmethod
     def direct_distance(pos1,pos2):
         return  math.sqrt((pos1.x - pos2.x) ** 2 + (pos1.y - pos2.y) ** 2 + (pos1.z - pos2.z) ** 2)
+
+    @staticmethod
+    def distance_2D_square(pos1, pos2):
+        return (pos1.x - pos2.x) ** 2 + (pos1.y - pos2.y) ** 2
 
 
 if __name__ == '__main__':

@@ -41,7 +41,7 @@ class WaypointUpdater(object):
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
         rospy.Subscriber('/obstacle_waypoint', PoseStamped, self.obstacle_cb)
         rospy.Subscriber('/current_velocity', TwistStamped, self.current_vel_cb)
-        # rospy.Subscriber('/vehicle/traffic_lights',TrafficLightArray,self.traffic_lights_cb)
+        rospy.Subscriber('/vehicle/traffic_lights',TrafficLightArray,self.traffic_lights_cb)
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
         rospy.Subscriber('/traffic_waypoint', Int32,self.traffic_cb)
@@ -54,8 +54,6 @@ class WaypointUpdater(object):
         self.brake_rate = rospy.get_param('~brake_rate', 1.)
         self.max_jerk = rospy.get_param('~max_jerk')
 
-        # self.accel_ds, self.accel_vs = self.get_smooth_cubic_spline(self.velocity,self.accelerate_rate,self.max_jerk)
-        # self.decel_ds, self.decel_vs = self.get_smooth_cubic_spline(self.velocity,self.brake_rate,self.max_jerk)
         # calculate minimum brake distance
         distances,_ = self.get_smooth_cubic_spline(self.velocity,self.brake_rate,self.max_jerk)
         self.min_brake_distance = distances[-1]
@@ -212,7 +210,7 @@ class WaypointUpdater(object):
         :return: None
         '''
 
-        next_wp = self.find_next_waypoint(self.waypoints,current_position)
+        next_wp = self.find_next_waypoint(self.waypoints,current_position,self.next_wp_idx)
         d0 = WaypointUpdater.direct_distance(current_position.position, self.waypoints[next_wp].pose.pose.position)
 
         d_fitted, v_fitted = self.get_smooth_cubic_spline(self.velocity, self.accelerate_rate, self.max_jerk)

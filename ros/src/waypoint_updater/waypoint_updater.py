@@ -387,7 +387,7 @@ class WaypointUpdater(object):
 
         for light in msg.lights:
             light.pose.pose.position.z = 0
-            next_tl_wp = self.find_next_waypoint(self.waypoints, light.pose.pose)
+            next_tl_wp = self.find_next_waypoint(self.waypoints, light.pose.pose,self.current_tf_wp)
             if next_tl_wp > self.next_wp_idx:
                 next_light = light
                 break

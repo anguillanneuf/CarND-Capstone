@@ -431,43 +431,30 @@ class WaypointUpdater(object):
         :param start_wp: start waypoint index for search, default 0
         :return: index of next waypoint
         '''
-        (_, _, yaw) = tf.transformations.euler_from_quaternion([pose.orientation.x,
-                                                                pose.orientation.y,
-                                                                pose.orientation.z,
-                                                                pose.orientation.w])
 
-        next_wp_idx = start_wp
-        start = start_wp
-        while start < len(waypoints)-1:
-            stop = min(start + LOOKAHEAD_WPS, len(waypoints))
-            distances = [WaypointUpdater.direct_distance(pose.position, waypoints[i].pose.pose.position)
-                         for i in range(start, stop)]
-            arg_min_idx = np.argmin(distances)
-            next_wp_idx = start + arg_min_idx
+        d_min = float('inf')
+        next_wp = start_wp
 
-            # check if closest wp is at the end of segmentation
-            while next_wp_idx < stop -1:
-                y_wp = waypoints[next_wp_idx].pose.pose.position.y
-                x_wp = waypoints[next_wp_idx].pose.pose.position.x
-                y = pose.position.y
-                x = pose.position.x
-                heading = math.atan2(y_wp - y, x_wp - x)
-                # correction from
-                # https://gamedev.stackexchange.com/questions/4467/comparing-angles-and-working-out-the-difference
-                delta_theta = 180 - math.fabs(math.fabs(heading - yaw) - 180)
-                if delta_theta > math.pi / 2:
-                    next_wp_idx += 1
-                else:
+        for i in range(start_wp,len(waypoints)):
+            # only for comparision not necessary to calulate sqaure root .
+            d = WaypointUpdater.distance_2D_square(pose.position, waypoints[i].pose.pose.position)
+            next_wp = i
+            if d < d_min:
+                d_min = d
+            else:
+                # calculate angle between two vectors v1=x1 + y1*i, v2= x2 + y2*i
+                x1 = self.waypoints[i].pose.pose.position.x - self.waypoints[i-1].pose.pose.position.x
+                y1 = self.waypoints[i].pose.pose.position.y - self.waypoints[i-1].pose.pose.position.y
+                x2 = pose.position.x - self.waypoints[i-1].pose.pose.position.x
+                y2 = pose.position.y - self.waypoints[i-1].pose.pose.position.y
+                # we only need to check if cos_theta sign to determin the angle is >90
+                cos_theta_sign= x1*x2 + y1*y2
+
+                if cos_theta_sign < 0:
+                    next_wp = i -1
                     break
 
-            # the next waypoint within the selected segmentation (LOOKAHEAD_WPS)
-            if next_wp_idx < stop -1:
-                break
-            # the next waypoint is at the end of selected segmentation, start from this point for next segmentation
-            else:
-                start = next_wp_idx
-
-        return next_wp_idx
+        return next_wp
 
     @staticmethod
     def get_waypoint_velocity(waypoint):
@@ -489,6 +476,10 @@ class WaypointUpdater(object):
     @staticmethod
     def direct_distance(pos1,pos2):
         return  math.sqrt((pos1.x - pos2.x) ** 2 + (pos1.y - pos2.y) ** 2 + (pos1.z - pos2.z) ** 2)
+
+    @staticmethod
+    def distance_2D_square(pos1, pos2):
+        return (pos1.x - pos2.x) ** 2 + (pos1.y - pos2.y) ** 2
 
 
 if __name__ == '__main__':

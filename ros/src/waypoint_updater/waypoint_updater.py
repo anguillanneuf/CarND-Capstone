@@ -172,7 +172,7 @@ class WaypointUpdater(object):
             return d1+d2+d3
 
 
-    def generate_brake_path_with_constraint_distance(self, v0,stop_wp,distance):
+    def generate_brake_path_with_constraint_distance(self, v0, stop_wp,distance):
         '''
 
         :param v0: start velocity
@@ -208,16 +208,10 @@ class WaypointUpdater(object):
                     delta_d = distance - d_speedup - d_slowdown
                     if delta_d >0:
                         break
-                rospy.logwarn("find proper v0:%.03f,vt: %.03f", v0,vt)
+                rospy.loginfo("Minimum speed up and slow down find proper v0:%.03f,vt: %.03f", v0,vt)
                 speedup_wps,_ = self.generate_speedup_path(v0,vt,self.current_pose.pose, distance-d_slowdown)
                 brake_wps,_ = self.generate_brake_path(vt,stop_wp)
-                # for wp in speedup_wps + brake_wps:
-                #   rospy.logwarn("wp x:%.03f,y:%.03f,yaw:%.03f,v:%.03f", wp.pose.pose.position.x,
-                #                  wp.pose.pose.position.y, wp.pose.pose.orientation.z, wp.twist.twist.linear.x)
 
-                # rospy.logwarn("wp x:%.03f,y:%.03f,yaw:%.03f,v:%.03f", self.waypoints[stop_wp].pose.pose.position.x,
-                #               self.waypoints[stop_wp].pose.pose.position.y, self.waypoints[stop_wp].pose.pose.orientation.z,
-                #               self.waypoints[stop_wp].twist.twist.linear.x)
                 return speedup_wps+brake_wps,self.next_wp_idx-1
 
 
@@ -284,7 +278,8 @@ class WaypointUpdater(object):
 
         augmented_waypoints= augmented_waypoints[::-1]
 
-        # add additional waypoints and set velocitiy=0
+        # add additional waypoints and set velocitiy=0, this is used when brake waypoints are published,
+        # but car still not stops.
         additional_wps = self.waypoints[stop_wp+1:stop_wp+50]
         for i in range(len(additional_wps)):
             p = Waypoint()
@@ -296,22 +291,6 @@ class WaypointUpdater(object):
 
             augmented_waypoints.append(p)
 
-        # rospy.logdebug("fit points:")
-        # for i in range(len(Ds)):
-        #    rospy.logdebug("wp x:%.03f,y:%.03f,yaw:%.03f, distance:%.03f", Xs[i],
-        #                  Ys[i], Oz[i], Ds[i])
-
-        #rospy.logwarn("original waypoints:")
-        #for wp in self.waypoints[brake_start_wp:next_wp]:
-        #    rospy.logwarn("wp x:%.03f,y:%.03f,yaw:%.03f,v:%.03f", wp.pose.pose.position.x,
-        #                  wp.pose.pose.position.y,wp.pose.pose.orientation.z, wp.twist.twist.linear.x)
-
-        # rospy.logdebug("brake_start_wp: %d", brake_start_wp)
-        # rospy.logwarn("augmented waypoints,brake_start_wp: %d ",brake_start_wp)
-        # for wp in augmented_waypoints[::-1]:
-        #    rospy.logwarn("wp x:%.03f,y:%.03f,yaw:%.03f,v:%.03f", wp.pose.pose.position.x,
-        #                  wp.pose.pose.position.y,wp.pose.pose.orientation.z, wp.twist.twist.linear.x)
-        # reverse the list
         return augmented_waypoints, brake_start_wp
 
     def generate_speedup_path(self, v0,vt, current_position, distance = None):
@@ -324,7 +303,7 @@ class WaypointUpdater(object):
         :return: None
         '''
 
-        next_wp = self.find_next_waypoint(self.waypoints,current_position,self.next_wp_idx)
+        next_wp = WaypointUpdater.find_next_waypoint(self.waypoints,current_position,self.next_wp_idx)
         d0 = WaypointUpdater.direct_distance(current_position.position, self.waypoints[next_wp].pose.pose.position)
 
         Ds_sampled, Vs_sampled = self.get_distance_velocity_trajectory(v0, vt, self.accelerate_rate, self.max_jerk)
@@ -400,24 +379,7 @@ class WaypointUpdater(object):
                 p.twist.twist.linear.x = Vs_sampled[-1]
                 augmented_waypoints.append(p)
 
-        # rospy.logwarn("augmented waypoints, speedup_stop_wp %d", speedup_end_wp)
-        # rospy.logdebug("fit points:")
-        # for i in range(len(Ds)):
-        #     rospy.logdebug("wp x:%.03f,y:%.03f,yaw:%.03f, distance:%.03f", Xs[i],
-        #                 Ys[i], Oz[i],Ds[i])
-        #
-        # rospy.logwarn("original waypoints:")
-        # for wp in self.waypoints[next_wp:speedup_stop_wp]:
-        #     rospy.logdebug("wp x:%.03f,y:%.03f,z:%.03f,yaw:%.03f,v:%.03f", wp.pose.pose.position.x,
-        #                   wp.pose.pose.position.y, wp.pose.pose.position.z,
-        #                   wp.pose.pose.orientation.z, wp.twist.twist.linear.x)
-        #
-        # rospy.logdebug("speedup_stop_wp: %d", speedup_stop_wp)
-
-        #for wp in augmented_waypoints:
-        #     rospy.logwarn("wp x:%.03f,y:%.03f,yaw:%.03f,v:%.03f", wp.pose.pose.position.x,
-        #                   wp.pose.pose.position.y, wp.pose.pose.orientation.z, wp.twist.twist.linear.x)
-
+        rospy.logwarn("augmented waypoints, speedup_end_wp %d", speedup_end_wp)
 
         return augmented_waypoints, speedup_end_wp
 
@@ -427,58 +389,56 @@ class WaypointUpdater(object):
 
         # rospy.loginfo('current_pose Received - x:%d, y:%d,z:%d', msg.pose.position.x, msg.pose.position.y,
         #              msg.pose.position.z)
+        if self.waypoints is None:
+            return
+
         # get next waypoint index
-        if self.waypoints is not None:
-            # first time to update speed for acceleration to target speed and set the stop point
-            if self.current_pose is None:
-                self.current_pose = msg
-                self.speedup_wps, self.speedup_stop_wp = self.generate_speedup_path(self.current_vel,self.target_vel,self.current_pose.pose)
-                rospy.logwarn("Speed up wp count,%d", len(self.speedup_wps))
-            else:
-                self.current_pose = msg
+        # first time to update speed for acceleration to target speed and set the stop point
+        if self.current_pose is None:
+            self.current_pose = msg
+            self.speedup_wps, self.speedup_stop_wp = self.generate_speedup_path(self.current_vel, self.target_vel,
+                                                                                self.current_pose.pose)
+            rospy.logwarn("Speed up to wp:%d", self.speedup_stop_wp )
+        else:
+            self.current_pose = msg
 
-            lane = Lane()
-            lane.header.frame_id = '/world'
-            lane.header.stamp = rospy.Time.now()
-            # find next waypoint index
-            next_wp_idx = self.find_next_waypoint(self.waypoints,self.current_pose.pose,self.next_wp_idx)
+        lane = Lane()
+        lane.header.frame_id = '/world'
+        lane.header.stamp = rospy.Time.now()
+        # find next waypoint index
+        next_wp_idx = WaypointUpdater.find_next_waypoint(self.waypoints, self.current_pose.pose, self.next_wp_idx)
 
-            if next_wp_idx > self.next_wp_idx:
-                rospy.logwarn("Next WayPoint:%d", next_wp_idx)
+        if next_wp_idx > self.next_wp_idx:
+            rospy.logwarn("Next WayPoint:%d", next_wp_idx)
 
-            # check if traffic light is present:
-            if next_wp_idx >= self.brake_start_wp:
-                # publish decelleration waypoints
-                passed_wp_idx = self.find_next_waypoint(self.brake_wps, self.current_pose.pose, 0)
-                #rospy.logwarn("current pos x:%.03f,y:%.03f,passed wp x:%.03f,y:%.03f", self.current_pose.pose.position.x,
-                #              self.current_pose.pose.position.y,
-                #              self.brake_wps[0].pose.pose.position.x,self.brake_wps[0].pose.pose.position.y)
-                if passed_wp_idx< len(self.brake_wps):
-                    lane.waypoints = self.brake_wps[passed_wp_idx:]
-                    rospy.logwarn("publish brake wps %d, index %d",len(lane.waypoints),passed_wp_idx)
+        # check if traffic light is present:
+        if next_wp_idx >= self.brake_start_wp:
+            # publish slow down waypoints
+            passed_wp_idx = WaypointUpdater.find_next_waypoint(self.brake_wps, self.current_pose.pose, 0)
+            self.brake_wps = self.brake_wps[passed_wp_idx:]
+            lane.waypoints = self.brake_wps
+            rospy.logwarn("publish brake wps %d", len(lane.waypoints))
 
-            elif next_wp_idx < self.speedup_stop_wp:
-                # publish acceleration waypoints:
-                passed_wp_idx = self.find_next_waypoint(self.speedup_wps, self.current_pose.pose, 0)
-                count = len(self.speedup_wps)-passed_wp_idx
-                lane.waypoints = self.speedup_wps[passed_wp_idx:]
-                if passed_wp_idx>0:
-                    rospy.logwarn("publish speedup wps, %d", count)
-                if count< LOOKAHEAD_WPS:
-                    stop = min(self.speedup_stop_wp + LOOKAHEAD_WPS -count,self.total_wp_num)
-                    lane.waypoints = lane.waypoints + self.waypoints[self.speedup_stop_wp:stop]
+        elif next_wp_idx < self.speedup_stop_wp:
+            # publish acceleration waypoints:
+            passed_wp_idx = WaypointUpdater.find_next_waypoint(self.speedup_wps, self.current_pose.pose, 0)
+            self.speedup_wps = self.speedup_wps[passed_wp_idx:]
+            count = len(self.speedup_wps)
+            lane.waypoints = self.speedup_wps
+            if passed_wp_idx > 0:
+                rospy.logwarn("publish speedup wps, %d", count)
+            if count < LOOKAHEAD_WPS:
+                stop = min(self.speedup_stop_wp + LOOKAHEAD_WPS - count, self.total_wp_num)
+                lane.waypoints = lane.waypoints + self.waypoints[self.speedup_stop_wp:stop]
 
-            else:
-                # publish normal waypoints
-                start = min(len(self.waypoints)-1,next_wp_idx)
-                stop = min(next_wp_idx + LOOKAHEAD_WPS,self.total_wp_num)
-                lane.waypoints = self.waypoints[start:stop]
+        else:
+            # publish normal waypoints
+            start = min(len(self.waypoints) - 1, next_wp_idx)
+            stop = min(next_wp_idx + LOOKAHEAD_WPS, self.total_wp_num)
+            lane.waypoints = self.waypoints[start:stop]
 
-                # rospy.logwarn("publish normal wps, %d,",len(lane.waypoints))
-
-            self.next_wp_idx = next_wp_idx
-            self.final_waypoints_pub.publish(lane)
-
+        self.next_wp_idx = next_wp_idx
+        self.final_waypoints_pub.publish(lane)
 
     def waypoints_cb(self, waypoints):
         # TODO: Done Implement
@@ -487,14 +447,13 @@ class WaypointUpdater(object):
             self.waypoints = waypoints.waypoints
             self.total_wp_num = len(self.waypoints)
             self.brake_start_wp = self.total_wp_num
-
             # following code is used for test traffic lights
             next_wp = 0
             for tf in self.light_positions:
                 p = PoseStamped()
                 p.pose.position.x = tf[0]
                 p.pose.position.y = tf[1]
-                next_wp = self.find_next_waypoint(self.waypoints,p.pose,next_wp)
+                next_wp = WaypointUpdater.find_next_waypoint(self.waypoints,p.pose,next_wp)
                 self.light_pos_wps.append(next_wp)
 
     def traffic_cb(self, msg):
@@ -537,9 +496,7 @@ class WaypointUpdater(object):
             rospy.logwarn("next traffic idx %d, stop at: %d", self.next_tf_idx,self.light_pos_wps[self.next_tf_idx])
             d = self.distance(self.waypoints, self.next_wp_idx, self.light_pos_wps[self.next_tf_idx])
             self.brake_wps, self.brake_start_wp = self.generate_brake_path_with_constraint_distance(self.current_vel,
-                                                                                                    self.light_pos_wps[
-                                                                                                        self.next_tf_idx],
-                                                                                                    d)
+                                             self.light_pos_wps[self.next_tf_idx], d)
 
         if self.waiting_for_tf:
             if msg.lights[self.next_tf_idx].state ==2:
@@ -552,13 +509,29 @@ class WaypointUpdater(object):
                 self.next_tf_idx +=1
                 rospy.logwarn("next traffic idx %d, stop at: %d", self.next_tf_idx,
                               self.light_pos_wps[self.next_tf_idx])
-                d = self.distance(self.waypoints, self.next_wp_idx, self.light_pos_wps[self.next_tf_idx])
+                d = WaypointUpdater.distance(self.waypoints, self.next_wp_idx, self.light_pos_wps[self.next_tf_idx])
                 self.brake_wps, self.brake_start_wp = self.generate_brake_path_with_constraint_distance(
                     self.current_vel,self.light_pos_wps[self.next_tf_idx],d)
         else:
-            if self.next_wp_idx>=self.brake_start_wp and msg.lights[self.next_tf_idx].state < 2:
-                rospy.logwarn("traffic light at Waypoint:%d is RED", self.light_pos_wps[self.next_tf_idx])
-                self.waiting_for_tf = True
+            if self.next_wp_idx>=self.brake_start_wp:
+                # traffic light is yellow or red
+                if msg.lights[self.next_tf_idx].state < 2:
+                    rospy.logwarn("traffic light at Waypoint:%d is RED", self.light_pos_wps[self.next_tf_idx])
+                    self.waiting_for_tf = True
+
+                else:
+                    # update brake distance if car does not drive in top speed
+                    brake_length = self.get_min_distance_for_smooth_tractory(0, self.current_vel, self.brake_rate,self.max_jerk)
+                    d = self.distance(self.waypoints, self.next_wp_idx, self.light_pos_wps[self.next_tf_idx])
+                    if d > brake_length:
+                        self.brake_wps,self.brake_start_wp = self.generate_brake_path(self.current_vel,self.light_pos_wps[self.next_tf_idx])
+                    # go quickly through the traffic light
+                    else:
+                        self.next_tf_idx += 1
+                        rospy.logwarn("next traffic idx %d, stop at: %d", self.next_tf_idx,self.light_pos_wps[self.next_tf_idx])
+                        d = WaypointUpdater.distance(self.waypoints, self.next_wp_idx, self.light_pos_wps[self.next_tf_idx])
+                        self.brake_wps, self.brake_start_wp = self.generate_brake_path_with_constraint_distance(
+                            self.current_vel, self.light_pos_wps[self.next_tf_idx], d)
 
 
 
@@ -569,7 +542,8 @@ class WaypointUpdater(object):
     def current_vel_cb(self, msg):
         self.current_vel = msg.twist.linear.x
 
-    def find_next_waypoint(self, waypoints,pose, start_wp=0):
+    @staticmethod
+    def find_next_waypoint(waypoints,pose, start_wp=0):
         '''
         Get the next waypoint index
         :param pose: related position
@@ -578,7 +552,6 @@ class WaypointUpdater(object):
         '''
 
         d_min = float('inf')
-        start_wp = max(0,start_wp)
         next_wp = start_wp
 
         for i in range(start_wp,len(waypoints)):
@@ -590,24 +563,24 @@ class WaypointUpdater(object):
                 d_min = d
             else:
                 # calculate angle between two vectors v1=x1 + y1*i, v2= x2 + y2*i
-                x1 = self.waypoints[i].pose.pose.position.x - self.waypoints[i-1].pose.pose.position.x
-                y1 = self.waypoints[i].pose.pose.position.y - self.waypoints[i-1].pose.pose.position.y
-                x2 = pose.position.x - self.waypoints[i-1].pose.pose.position.x
-                y2 = pose.position.y - self.waypoints[i-1].pose.pose.position.y
+                x1 = waypoints[i].pose.pose.position.x - waypoints[i-1].pose.pose.position.x
+                y1 = waypoints[i].pose.pose.position.y - waypoints[i-1].pose.pose.position.y
+                x2 = pose.position.x - waypoints[i-1].pose.pose.position.x
+                y2 = pose.position.y - waypoints[i-1].pose.pose.position.y
                 # we only need to check if cos_theta sign to determin the angle is >90
                 cos_theta_sign= x1*x2 + y1*y2
 
                 if cos_theta_sign < 0:
                     next_wp = i -1
-
+                # stop search, find the right one
                 break
 
         # check if reaches the last wp.
         if next_wp == len(waypoints)-1:
-            x1 = self.waypoints[-2].pose.pose.position.x - self.waypoints[-1].pose.pose.position.x
-            y1 = self.waypoints[-2].pose.pose.position.y - self.waypoints[-1].pose.pose.position.y
-            x2 = pose.position.x - self.waypoints[-1].pose.pose.position.x
-            y2 = pose.position.y - self.waypoints[-1].pose.pose.position.y
+            x1 = waypoints[-2].pose.pose.position.x - waypoints[-1].pose.pose.position.x
+            y1 = waypoints[-2].pose.pose.position.y - waypoints[-1].pose.pose.position.y
+            x2 = pose.position.x - waypoints[-1].pose.pose.position.x
+            y2 = pose.position.y - waypoints[-1].pose.pose.position.y
             # we only need to check if cos_theta sign to determin the angle is >90
             cos_theta_sign = x1 * x2 + y1 * y2
             if cos_theta_sign < 0:

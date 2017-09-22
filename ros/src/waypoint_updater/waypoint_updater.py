@@ -163,6 +163,22 @@ class WaypointUpdater(object):
 
                 return list(interpolated_wps)+ additional_wps, start
 
+    def checkwp_before_traffic_light(self, traffic_wp):
+        '''
+        :param traffic_wp:
+        :return: return a wp car needs to check if traffic light color
+        '''
+        d_min = WaypointUpdater.get_min_distance(self.target_vel,0.0,self.accelerate_rate/2,
+                                                 self.max_jerk,return_list=False)
+        d = 0
+        check_wp = 0
+        for i in range(traffic_wp,0,-1):
+            d += WaypointUpdater.distance(self.waypoints,i-1,i)
+            if d > d_min:
+                check_wp = i-1
+                break
+
+        return check_wp
 
     def generate_brake_path_imp(self,stop_wp, v0, deaccel, jerk):
         '''
@@ -251,8 +267,8 @@ class WaypointUpdater(object):
         if next_wp_idx >= self.total_wp_num:
             return
 
-        if next_wp_idx > self.next_wp_idx:
-            rospy.logwarn("Next WayPoint:%d", next_wp_idx)
+        # if next_wp_idx > self.next_wp_idx:
+        #    rospy.logwarn("Next WayPoint:%d", next_wp_idx)
 
         # check if traffic light is present:
         if next_wp_idx >= self.brake_start_wp:
@@ -337,7 +353,7 @@ class WaypointUpdater(object):
         if self.next_tf_idx == -1:
             self.next_tf_idx += 1
             next_tl_wp = self.light_pos_wps[self.next_tf_idx]
-            _,self.check_tf_wp = self.generate_brake_path_imp(next_tl_wp, self.target_vel, self.brake_rate/2, self.max_jerk)
+            self.check_tf_wp = self.checkwp_before_traffic_light(next_tl_wp)
             rospy.logwarn("Next traffic idx %d, waypoint at: %d, start to check  at:%d", self.next_tf_idx,
                           next_tl_wp, self.check_tf_wp)
 
@@ -372,8 +388,7 @@ class WaypointUpdater(object):
 
             self.next_tf_idx += 1
             next_tl_wp = self.light_pos_wps[self.next_tf_idx]
-            _, self.check_tf_wp = self.generate_brake_path_imp(next_tl_wp, self.target_vel, self.brake_rate / 2,
-                                                               self.max_jerk)
+            self.check_tf_wp = self.checkwp_before_traffic_light(next_tl_wp)
             rospy.logwarn("Next traffic idx %d, waypoint at: %d, start to check  at:%d", self.next_tf_idx,
                           next_tl_wp, self.check_tf_wp)
             self.traffic_state = Traffic.FREE
@@ -533,6 +548,12 @@ class WaypointUpdater(object):
         ts_samples = np.arange(0, ts[-1]+T_STEP_SIZE, T_STEP_SIZE)
         ds_samples = cs_d(ts_samples)
         vs_samples = cs_v(ts_samples)
+
+
+        if LOG:
+            accel_s = cs_d(ts_samples, 2)
+            js = cs_d(ts_samples, 3)
+            rospy.loginfo("max accel %.03f, jerk %.03f",np.max(np.abs(accel_s)),np.max(np.abs(js)))
 
         return ds_samples, vs_samples
 

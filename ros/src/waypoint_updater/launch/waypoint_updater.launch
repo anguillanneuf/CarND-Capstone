@@ -3,7 +3,7 @@
     <node pkg="waypoint_updater" type="waypoint_updater.py" name="waypoint_updater">
         <param name="max_jerk" value="10." />
         <param name="brake_rate" value="10.0" />
-        <param name="accelerate_rate" value="5." />
+        <param name="accelerate_rate" value="8." />
         <rosparam param="light_positions">
         - [1148.56, 1184.65]
         - [1559.2, 1158.43]

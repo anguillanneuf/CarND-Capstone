@@ -43,8 +43,7 @@ class Traffic(Enum):
 class WaypointUpdater(object):
     def __init__(self):
         rospy.init_node('waypoint_updater')
-
-
+        
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
@@ -103,7 +102,6 @@ class WaypointUpdater(object):
             d_speedup = 0
 
         d_slowdown= WaypointUpdater.get_min_distance(vt,0, brake, self.max_jerk)
-
         delta_d = distance - d_speedup - d_slowdown
         # car has long enough distance to speed up first then slow down
         if delta_d > 0:
@@ -138,9 +136,11 @@ class WaypointUpdater(object):
                 rospy.logwarn("Speed up and slow down find proper v0:%.03f,vt: %.03f", v0,vt)
                 ds_speedup, vs_speedup = WaypointUpdater.generate_dist_vels(v0, vt, self.accelerate_rate, self.max_jerk)
                 ds_slowdown, vs_slowdown = WaypointUpdater.generate_dist_vels(vt, 0, self.brake_rate, self.max_jerk)
+                interpolated_wps, start, stop = WaypointUpdater.interpolate_waypoints(self.waypoints, stop_wp, ds_slowdown[-1],
+                                                                                      ds_slowdown, vs_slowdown,
+                                                                                      wp_is_start=False)
 
                 d2 = ds_slowdown[-1] + delta_d
-
                 ds_slowdown = ds_slowdown * d2/ds_slowdown[-1] + ds_speedup[-1]
 
                 ds_combined = list(ds_speedup) + list(ds_slowdown[1:])
@@ -176,7 +176,7 @@ class WaypointUpdater(object):
             if d > d_min:
                 check_wp = i-5 # reserve 4 waypoints before enter the brake zone
                 break
-        rospy.logwarn("min brake distance is %.03f",d_min)
+
         return check_wp
 
     def generate_brake_path_imp(self,stop_wp, v0, deaccel, jerk):
@@ -199,7 +199,6 @@ class WaypointUpdater(object):
 
         # add additional waypoints and set velocitiy=0, this is used when brake waypoints are published,
         # but car still not stops.
-
         additional_wps = self.waypoints[stop_wp+1:stop_wp + 11]
         for i in range(len(additional_wps)):
             p = Waypoint()
@@ -245,30 +244,17 @@ class WaypointUpdater(object):
             p.pose.pose.position.z = additional_wps[i].pose.pose.position.z
             p.pose.pose.orientation.z = additional_wps[i].pose.pose.orientation.z
             p.twist.twist.linear.x = additional_wps[i].twist.twist.linear.x
-
             interpolated_wps.append(p)
 
         return interpolated_wps
 
-
     def pose_cb(self, msg):
         # TODO: Done Implement
 
-        # rospy.loginfo('current_pose Received - x:%d, y:%d,z:%d', msg.pose.position.x, msg.pose.position.y,
-        #              msg.pose.position.z)
-        # we get the end of trip
         if self.waypoints is None or self.next_wp_idx >= self.total_wp_num:
             return
-
+        self.current_pose = msg
         # get next waypoint index
-        # first time to update speed for acceleration to target speed and set the stop point
-        if self.current_pose is None:
-            self.current_pose = msg
-            self.augmented_wps = self.generate_speedup_path()
-            rospy.logwarn("Speed up -->")
-        else:
-            self.current_pose = msg
-
         lane = Lane()
         lane.header.frame_id = '/world'
         lane.header.stamp = rospy.Time.now()
@@ -280,18 +266,14 @@ class WaypointUpdater(object):
             rospy.logwarn("Next WayPoint:%d", next_wp_idx)
 
         if self.augmented_wps is not None:
-            #passed_wp_idx = WaypointUpdater.find_next_waypoint(self.augmented_wps, self.current_pose, 0)
             predict_wp,next_wp = WaypointUpdater.predict_next_waypoint(self.augmented_wps,self.current_pose,
                                                                        self.current_vel,0)
             lane.waypoints = self.augmented_wps[predict_wp:]
-            # rospy.logwarn("total %d,predicted wp %d, next wp, %d next wp %d, v0:%.03f,vt:%.03f",
-            #              len(self.augmented_wps), predict_wp,next_wp,next_wp_idx,self.current_vel,
-            #              lane.waypoints[0].twist.twist.linear.x)
             self.augmented_wps = self.augmented_wps[predict_wp:]
         else:
             # publish normal waypoints
             start = min(len(self.waypoints) - 1, predicted_wp)
-            stop = min(next_wp_idx + LOOKAHEAD_WPS, self.total_wp_num)
+            stop = min(predicted_wp + LOOKAHEAD_WPS, self.total_wp_num)
             lane.waypoints = self.waypoints[start:stop]
 
         self.next_wp_idx = next_wp_idx
@@ -312,7 +294,7 @@ class WaypointUpdater(object):
                 p.pose.position.x = tf[0]
                 p.pose.position.y = tf[1]
                 next_wp = WaypointUpdater.find_next_waypoint(self.waypoints,p,next_wp)
-                self.light_pos_wps.append(next_wp-1)
+                self.light_pos_wps.append(next_wp-2)
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
@@ -353,7 +335,6 @@ class WaypointUpdater(object):
             rospy.logwarn("Next traffic idx %d, waypoint at: %d, start to check  at:%d", self.next_tf_idx,
                           next_tl_wp, self.check_tf_wp)
 
-
         # state machine to handle behavior in front of traffic light
         if self.traffic_state == Traffic.IN_BRAKE_ZONE:
             if msg.lights[self.next_tf_idx].state < 2:
@@ -361,8 +342,8 @@ class WaypointUpdater(object):
                 d = WaypointUpdater.distance(self.waypoints, self.next_wp_idx, next_tl_wp)
                 wps= self.generate_brake_path(next_tl_wp, d)
                 if wps is None:
-                    self.augmented_wps= self.generate_speedup_path()
-                    rospy.logwarn("traffic light at Waypoint:%d is RED", next_tl_wp)
+                    # self.augmented_wps= self.generate_speedup_path()
+                    rospy.logwarn("traffic light at Waypoint:%d is YELLOW/RED", next_tl_wp)
                     rospy.logwarn("Not enough distance to brake, risk to speed up through traffic light")
                     self.traffic_state = Traffic.SPEED_UP
                     rospy.logwarn("state is in AFTER_TRAFFIC_LIGHT")
@@ -378,32 +359,28 @@ class WaypointUpdater(object):
 
         elif self.traffic_state == Traffic.IN_STOPPING:
             if msg.lights[self.next_tf_idx].state == 2:
-                self.augmented_wps = self.generate_speedup_path()
-
+                # self.augmented_wps = self.generate_speedup_path()
                 self.traffic_state = Traffic.SPEED_UP
                 rospy.logwarn("traffic light at Waypoint:%d is GREEN", self.light_pos_wps[self.next_tf_idx])
                 rospy.logwarn("state is in SPEED_UP")
 
         elif self.traffic_state == Traffic.SPEED_UP:
+            self.augmented_wps = None
+            self.next_tf_idx += 1
             if self.next_tf_idx >= len(self.light_pos_wps):
                 self.check_tf_wp = self.total_wp_num
-                self.traffic_state = Traffic.FREE
-
-            if self.augmented_wps is None or len(self.augmented_wps)< 10:
-                self.augmented_wps = None
-                self.next_tf_idx += 1
+            else:
                 next_tl_wp = self.light_pos_wps[self.next_tf_idx]
                 self.check_tf_wp = self.checkwp_before_traffic_light(next_tl_wp)
                 rospy.logwarn("Next traffic idx %d, waypoint at: %d, start to check  at:%d", self.next_tf_idx,
                           next_tl_wp, self.check_tf_wp)
-                self.traffic_state = Traffic.FREE
-                rospy.logwarn("state is in FREE")
+            self.traffic_state = Traffic.FREE
+            rospy.logwarn("state is in FREE")
 
         else: # self.traffic_state == Traffic.FREE
             if self.next_wp_idx > self.check_tf_wp:
                 self.traffic_state = Traffic.IN_BRAKE_ZONE
                 rospy.logwarn("Begin to slow down, state is in IN_BRAKE_ZONE")
-
         return
 
     def obstacle_cb(self, msg):
@@ -476,7 +453,6 @@ class WaypointUpdater(object):
         oz_samples = cs_oz(distances)
 
         interpolated_wps=[]
-
         for i in range(len(distances)):
             p = Waypoint()
             p.pose.pose.position.x = xs_samples[i]
@@ -484,7 +460,6 @@ class WaypointUpdater(object):
             p.pose.pose.position.z = 0
             p.pose.pose.orientation.z = oz_samples[i]
             p.twist.twist.linear.x = velocities[i]
-
             interpolated_wps.append(p)
 
         return interpolated_wps,wp_start,wp_stop
@@ -544,7 +519,6 @@ class WaypointUpdater(object):
         :param start_wp: start waypoint index for search, default 0
         :return: predicted waypoint, next waypoint
         '''
-
         next_wp = WaypointUpdater.find_next_waypoint(waypoints,pose,start_wp)
         d0 = WaypointUpdater.direct_distance(pose.pose.position,waypoints[next_wp].pose.pose.position)
         predict_d = vel*delay
@@ -559,7 +533,6 @@ class WaypointUpdater(object):
                     break
 
         return predict_wp,next_wp
-
 
     @staticmethod
     def generate_dist_vels(v0, vt, accel, jerk):

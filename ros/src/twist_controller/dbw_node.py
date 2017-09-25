@@ -31,18 +31,17 @@ that we have created in the `__init__` function.
 
 '''
 
-LOG = True # Set to True to enable logs
+LOG = False # Set to True to enable logs
 
 class DBWNode(object):
     def __init__(self):
         rospy.init_node('dbw_node')
 
-        # vehicle_mass = rospy.get_param('~vehicle_mass', 1736.35)
+        vehicle_mass = rospy.get_param('~vehicle_mass', 1736.35)
         # fuel_capacity = rospy.get_param('~fuel_capacity', 13.5)
         brake_deadband = rospy.get_param('~brake_deadband', .1)
         decel_limit = rospy.get_param('~decel_limit', -10)
         accel_limit = rospy.get_param('~accel_limit', 1.)
-        mass = rospy.get_param('~vehicle_mass',1800)
         wheel_radius = rospy.get_param('~wheel_radius',0.335)
         # wheel_radius = rospy.get_param('~wheel_radius', 0.2413)
         wheel_base = rospy.get_param('~wheel_base', 2.8498)
@@ -54,7 +53,8 @@ class DBWNode(object):
         kd = rospy.get_param('~kd',0.01)
         min_speed = 0.1
 
-        max_torque = mass*decel_limit*wheel_radius *4
+        # x4 for 4 wheels of car
+        max_torque = vehicle_mass*decel_limit*wheel_radius *4 * 1.0
 
         self.steer_pub = rospy.Publisher('/vehicle/steering_cmd',
                                          SteeringCmd, queue_size=1)

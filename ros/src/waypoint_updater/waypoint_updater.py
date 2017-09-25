@@ -30,6 +30,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 
 LOOKAHEAD_WPS = 10 # Number of waypoints we will publish. You can change this number
 T_STEP_SIZE = 0.02 #time step for slowdown or speedup
+LATENCY = 0.4 # 100ms latency from planner to vehicle /simulator
 LOG = False # Set to true to enable logs
 
 class Traffic(Enum):
@@ -37,7 +38,7 @@ class Traffic(Enum):
     FREE =1
     IN_BRAKE_ZONE = 2
     IN_STOPPING =3
-    AFTER_TRAFFIC_LIGHT=4
+    SPEED_UP=4
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -257,18 +258,22 @@ class WaypointUpdater(object):
         lane.header.frame_id = '/world'
         lane.header.stamp = rospy.Time.now()
         # find next waypoint index
-        next_wp_idx = WaypointUpdater.find_next_waypoint(self.waypoints, self.current_pose, self.next_wp_idx)
+        predicted_wp,next_wp_idx = WaypointUpdater.predict_next_waypoint(self.waypoints, self.current_pose,
+                                                                         self.current_vel,self.next_wp_idx)
 
         # if next_wp_idx > self.next_wp_idx:
         #    rospy.logwarn("Next WayPoint:%d", next_wp_idx)
 
         if self.augmented_wps is not None:
-            passed_wp_idx = WaypointUpdater.find_next_waypoint(self.augmented_wps, self.current_pose, 0)
-            self.augmented_wps = self.augmented_wps[passed_wp_idx:]
-            lane.waypoints = self.augmented_wps
+            #passed_wp_idx = WaypointUpdater.find_next_waypoint(self.augmented_wps, self.current_pose, 0)
+            predict_wp,next_wp = WaypointUpdater.predict_next_waypoint(self.augmented_wps,self.current_pose,
+                                                                       self.current_vel,0)
+            lane.waypoints = self.augmented_wps[predict_wp:]
+            # rospy.logwarn("total %d,predicted wp %d, next wp, %d, speed %.03f",len(self.augmented_wps), predict_wp,next_wp,lane.waypoints[0].twist.twist.linear.x)
+            self.augmented_wps = self.augmented_wps[next_wp:]
         else:
             # publish normal waypoints
-            start = min(len(self.waypoints) - 1, next_wp_idx)
+            start = min(len(self.waypoints) - 1, predicted_wp)
             stop = min(next_wp_idx + LOOKAHEAD_WPS, self.total_wp_num)
             lane.waypoints = self.waypoints[start:stop]
 
@@ -342,40 +347,45 @@ class WaypointUpdater(object):
                     self.augmented_wps= self.generate_speedup_path()
                     rospy.logwarn("traffic light at Waypoint:%d is RED", next_tl_wp)
                     rospy.logwarn("Not enough distance to brake, risk to speed up through traffic light")
-                    self.traffic_state = Traffic.AFTER_TRAFFIC_LIGHT
+                    self.traffic_state = Traffic.SPEED_UP
+                    rospy.logwarn("state is in AFTER_TRAFFIC_LIGHT")
                 else:
                     self.augmented_wps = wps
                     rospy.logwarn("traffic light at Waypoint:%d is RED", next_tl_wp)
-                    rospy.logwarn("Begin to slow down")
+                    rospy.logwarn("Begin to slow down, state is in IN_STOPPING")
                     self.traffic_state = Traffic.IN_STOPPING
 
             # check car travels through the traffic position
             if self.next_wp_idx >= self.light_pos_wps[self.next_tf_idx]:
-                self.traffic_state = Traffic.AFTER_TRAFFIC_LIGHT
+                self.traffic_state = Traffic.SPEED_UP
 
         elif self.traffic_state == Traffic.IN_STOPPING:
             if msg.lights[self.next_tf_idx].state == 2:
                 self.augmented_wps = self.generate_speedup_path()
 
-                self.traffic_state = Traffic.AFTER_TRAFFIC_LIGHT
+                self.traffic_state = Traffic.SPEED_UP
                 rospy.logwarn("traffic light at Waypoint:%d is GREEN", self.light_pos_wps[self.next_tf_idx])
+                rospy.logwarn("state is in SPEED_UP")
 
-        elif self.traffic_state == Traffic.AFTER_TRAFFIC_LIGHT:
+        elif self.traffic_state == Traffic.SPEED_UP:
             if self.next_tf_idx >= len(self.light_pos_wps):
                 self.check_tf_wp = self.total_wp_num
                 self.traffic_state = Traffic.FREE
 
-            self.augmented_wps = None
-            self.next_tf_idx += 1
-            next_tl_wp = self.light_pos_wps[self.next_tf_idx]
-            self.check_tf_wp = self.checkwp_before_traffic_light(next_tl_wp)
-            rospy.logwarn("Next traffic idx %d, waypoint at: %d, start to check  at:%d", self.next_tf_idx,
+            if len(self.augmented_wps)< 10:
+                self.augmented_wps = None
+                self.next_tf_idx += 1
+                next_tl_wp = self.light_pos_wps[self.next_tf_idx]
+                self.check_tf_wp = self.checkwp_before_traffic_light(next_tl_wp)
+                rospy.logwarn("Next traffic idx %d, waypoint at: %d, start to check  at:%d", self.next_tf_idx,
                           next_tl_wp, self.check_tf_wp)
-            self.traffic_state = Traffic.FREE
+                self.traffic_state = Traffic.FREE
+                rospy.logwarn("state is in FREE")
 
-        else: #self.traffic_state == Traffic.FREE
+        else: # self.traffic_state == Traffic.FREE
             if self.next_wp_idx > self.check_tf_wp:
                 self.traffic_state = Traffic.IN_BRAKE_ZONE
+                rospy.logwarn("Begin to slow down, state is in IN_BRAKE_ZONE")
 
         return
 
@@ -508,6 +518,32 @@ class WaypointUpdater(object):
                 next_wp = next_wp +1
 
         return next_wp
+
+    @staticmethod
+    def predict_next_waypoint(waypoints,pose, vel, start_wp=0, delay = LATENCY):
+        '''
+        Get the next waypoint index
+        :param pose: related position
+        :param vel: current velocity
+        :param start_wp: start waypoint index for search, default 0
+        :return: predicted waypoint, next waypoint
+        '''
+
+        next_wp = WaypointUpdater.find_next_waypoint(waypoints,pose,start_wp)
+        d0 = WaypointUpdater.direct_distance(pose.pose.position,waypoints[next_wp].pose.pose.position)
+        predict_d = vel*delay
+        predict_wp = next_wp
+
+        if predict_d > d0:
+            d = d0
+            for i in range(next_wp+1,len(waypoints)):
+                d += WaypointUpdater.distance(waypoints,i-1,i)
+                predict_wp = i
+                if d > predict_d:
+                    break
+
+        return predict_wp,next_wp
+
 
     @staticmethod
     def generate_dist_vels(v0, vt, accel, jerk):

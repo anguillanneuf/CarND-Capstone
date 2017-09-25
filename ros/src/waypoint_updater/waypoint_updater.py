@@ -213,7 +213,7 @@ class WaypointUpdater(object):
     def pose_cb(self, msg):
         # TODO: Done Implement
 
-        if self.waypoints is None or self.next_wp_idx >= self.total_wp_num:
+        if self.waypoints is None or self.next_wp_idx >= self.total_wp_num -1:
             return
         self.current_pose = msg
         # get next waypoint index

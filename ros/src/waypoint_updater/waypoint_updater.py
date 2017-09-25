@@ -121,15 +121,19 @@ class WaypointUpdater(object):
             return self.generate_brake_path_imp(stop_wp, v0, self.max_brake, self.max_jerk)
         else:
 
-            if v0/vt > 0.8:
+            if v0 > 0.8 * self.target_vel:
                 ds_speedup =[0]
                 vs_speedup = [v0]
+                ds_slowdown, vs_slowdown = WaypointUpdater.generate_dist_vels(v0, 0, self.max_brake, self.max_jerk)
+                rospy.logwarn("Slow down v from %.03f m/s with d %.03f m", v0, distance)
             else:
                 ds_speedup, vs_speedup = WaypointUpdater.generate_dist_vels(v0, vt, self.max_accel, self.max_jerk)
+                # trick, for speed up set the target velocity and let control handle the smoothness
+                vs_speedup = map(lambda x: vt,vs_speedup)
+                ds_slowdown, vs_slowdown = WaypointUpdater.generate_dist_vels(vt, 0, self.max_brake, self.max_jerk)
+                rospy.logwarn("Speed up from %.03f m/s to %.03f m/s with d %.03f m and slow down with d %.03f m", v0, vt,
+                          ds_speedup[-1], distance - ds_speedup[-1])
 
-            ds_slowdown, vs_slowdown = WaypointUpdater.generate_dist_vels(vt, 0, self.max_brake, self.max_jerk)
-
-            rospy.logwarn("Speed up from %.03f to %.03f with d %.03f and slow down with d %.03f", v0, vt, ds_speedup[-1],distance- ds_speedup[-1])
             # elongate the path by delta_d for brake
             d2 =distance - ds_speedup[-1]
             ds_slowdown = ds_slowdown * d2 / ds_slowdown[-1] + ds_speedup[-1]

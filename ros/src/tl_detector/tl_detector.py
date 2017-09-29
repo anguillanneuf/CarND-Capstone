@@ -10,6 +10,7 @@ from light_classification.tl_classifier import TLClassifier
 import tf
 import cv2
 import yaml
+import math
 
 STATE_COUNT_THRESHOLD = 3
 
@@ -137,6 +138,23 @@ class TLDetector(object):
 
         x = 0
         y = 0
+
+        if trans != None:
+            # Calculates roll (psi), pitch (theta), yaw (phi) from the rotation matrix
+            euler = tf.transformations.euler_from_quaternion(rot)
+
+            sin_yaw = math.sin(euler[2])
+            cos_yaw = math.cos(euler[2])
+
+            # Pinhole Camera Model (https://goo.gl/x2oHRu)
+            # For more details, see (https://goo.gl/epdPfm)
+            # [R]otation matrix * world [P]oint + [t]ranslation 
+            R_P_t = (point_in_world.x*cos_yaw - point_in_world.y*sin_yaw + trans[0], 
+                point_in_world.x*sin_yaw + point_in_world.y*cos_yaw + trans[1], 
+                point_in_world.z + trans[2])
+
+            x = int(fx * -R_P_t[1]/R_P_t[0] + image_width/2)
+            y = int(fy * -R_P_t[2]/R_P_t[0] + image_height/2)
 
         return (x, y)
 

@@ -697,7 +697,7 @@ class WaypointUpdater(object):
             dist += Math3DHelper.distance(
                 waypoints[last_wp_index].pose.pose.position,
                 waypoints[current_wp_index].pose.pose.position)
-            last_wp_index = current_wp_indexsou
+            last_wp_index = current_wp_index
         return dist
 
     @staticmethod

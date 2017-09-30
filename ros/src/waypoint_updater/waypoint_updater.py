@@ -360,32 +360,29 @@ class WaypointUpdater(object):
                 self.augmented_wps = self.generate_brake_path(next_tl_wp, d)
                 if self.augmented_wps is None:
                     # self.augmented_wps= self.generate_speedup_path()
-                    rospy.logwarn(
-                        "traffic light at Waypoint:%d is YELLOW, state enters SPEED_UP",
-                        next_tl_wp)
                     self.traffic_state = Traffic.SPEED_UP
+                    WaypointUpdater.log_tf_color_and_state(
+                        next_tl_wp, "YELLOW", self.traffic_state)
                 else:
-                    rospy.logwarn(
-                        "traffic light at Waypoint:%d is YELLOW,state enters IN_STOPPING",
-                        next_tl_wp)
                     self.traffic_state = Traffic.IN_STOPPING
+                    WaypointUpdater.log_tf_color_and_state(
+                        next_tl_wp, "YELLOW", self.traffic_state)
             elif light_state == 0:  # RED
-                rospy.logwarn(
-                    "traffic light at Waypoint:%d is RED,state enters IN_STOPPING",
-                    next_tl_wp)
                 d = WaypointUpdater.distance_waypoints(
                     self.waypoints, self.next_wp_idx, next_tl_wp)
                 self.augmented_wps = self.generate_brake_path(
                     next_tl_wp, d, emergency=True)
                 self.traffic_state = Traffic.IN_STOPPING
+                WaypointUpdater.log_tf_color_and_state(
+                    next_tl_wp, "RED", self.traffic_state)
 
         def handle_in_stopping():
             if msg.lights[self.next_tf_idx].state == 2:
                 # self.augmented_wps = self.generate_speedup_path()
                 self.augmented_wps = None
                 self.traffic_state = Traffic.SPEED_UP
-                rospy.logwarn("traffic light at wp:%d is GREEN,state enters SPEED_UP",
-                              self.light_pos_wps[self.next_tf_idx])
+                WaypointUpdater.log_tf_color_and_state(
+                    self.light_pos_wps[self.next_tf_idx], "GREEN", self.traffic_state)
 
         def handle_speedup():
             if self.next_wp_idx > self.light_pos_wps[self.next_tf_idx] + 5:
@@ -703,6 +700,11 @@ class WaypointUpdater(object):
     @staticmethod
     def distance_2D_square(pos1, pos2):
         return (pos1.x - pos2.x) ** 2 + (pos1.y - pos2.y) ** 2
+
+    @staticmethod
+    def log_tf_color_and_state(waypoint, color, state):
+        rospy.logwarn("Traffic light at Waypoint:%d is %s, state enters %s",
+                      waypoint, color, state)
 
 
 if __name__ == '__main__':

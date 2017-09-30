@@ -11,12 +11,16 @@ import tf
 import cv2
 import yaml
 import math
+import numpy as np
+import time
 
 STATE_COUNT_THRESHOLD = 3
 
 class TLDetector(object):
     def __init__(self):
         rospy.init_node('tl_detector')
+
+        rate = rospy.Rate(2) 
 
         self.pose = None
         self.waypoints = None
@@ -101,8 +105,18 @@ class TLDetector(object):
             int: index of the closest waypoint in self.waypoints
 
         """
-        #TODO implement
-        return 0
+        #TODO implement: find index of cloest waypoint to pose
+        n = len(self.waypoints.waypoints)
+        node = [pose.position.x, pose.position.y]
+        nodes = np.zeros((n,2))
+
+        for i in range(n):
+            nodes[i] = [self.waypoints.waypoints[i].pose.pose.position.x,
+                        self.waypoints.waypoints[i].pose.pose.position.y]
+
+        dist = np.sum((nodes - node)**2, axis=1)
+
+        return np.argmin(dist)
 
 
     def project_to_image_plane(self, point_in_world):
@@ -148,13 +162,14 @@ class TLDetector(object):
 
             # Pinhole Camera Model (https://goo.gl/x2oHRu)
             # For more details, see (https://goo.gl/epdPfm)
-            # [R]otation matrix * world [P]oint + [t]ranslation 
-            R_P_t = (point_in_world.x*cos_yaw - point_in_world.y*sin_yaw + trans[0], 
+            # Rt = Rotation * Point + translation 
+            Rt = (point_in_world.x*cos_yaw - point_in_world.y*sin_yaw + trans[0], 
                 point_in_world.x*sin_yaw + point_in_world.y*cos_yaw + trans[1], 
                 point_in_world.z + trans[2])
 
-            x = int(fx * -R_P_t[1]/R_P_t[0] + image_width/2)
-            y = int(fy * -R_P_t[2]/R_P_t[0] + image_height/2)
+            # Note axis changes: car.x = img.z, car.y = img.x, car.z = img.y
+            x = int(fx * (-Rt[1])/Rt[0] + image_width/2)
+            y = int(fy * (-Rt[2])/Rt[0] + image_height/2)
 
         return (x, y)
 
@@ -177,6 +192,13 @@ class TLDetector(object):
         x, y = self.project_to_image_plane(light.pose.pose.position)
 
         #TODO use light location to zoom in on traffic light in image
+        h, w, c = cv_image.shape
+        cpy = cv_image.copy()
+        cv2.circle(cpy, center = (x,y), radius = 30, color = (200, 255, 255), thickness = 5)
+        cv2.circle(cpy, center = (x,y), radius = 15, color = (0, 255, 255), thickness = 5)
+        cv2.imwrite('traffic_lights_processed/processed_'+str(time.time())[:10]+'.png', cpy)
+        
+        # TODO: crop cv_image
 
         #Get classification
         return self.light_classifier.get_classification(cv_image)
@@ -194,13 +216,33 @@ class TLDetector(object):
 
         # List of positions that correspond to the line to stop in front of for a given intersection
         stop_line_positions = self.config['stop_line_positions']
+
         if(self.pose):
-            car_position = self.get_closest_waypoint(self.pose.pose)
+            # get the closest waypoint index for car
+            car_wp = self.get_closest_waypoint(self.pose.pose)
+
+            # get the cloesst waypoint index for closest TL ahead
+            min_dist = 1e4
+            for i in range(len(self.lights)):
+            	dist = math.hypot(self.pose.pose.position.x - self.lights[i].pose.pose.position.x,
+            	                  self.pose.pose.position.y - self.lights[i].pose.pose.position.y)
+                light_wp = self.get_closest_waypoint(self.lights[i].pose.pose)
+
+                if car_wp < light_wp and dist < min_dist:
+                    min_dist = dist 
+                    light_index = i
+                    light = self.lights[i]
 
         #TODO find the closest visible traffic light (if one exists)
-
         if light:
+            # get the closest waypoint index for upcoming stop line
+            stop_line = Pose()
+            stop_line.position.x = stop_line_positions[light_index][0]
+            stop_line.position.y = stop_line_positions[light_index][1]
+            stop_line.position.z = 0
+            light_wp = self.get_closest_waypoint(stop_line)
             state = self.get_light_state(light)
+            # rospy.logwarn("(tianzi) traffic light ahead at wp: %d", light_wp)
             return light_wp, state
         self.waypoints = None
         return -1, TrafficLight.UNKNOWN

@@ -7,7 +7,7 @@ from std_msgs.msg import Int32
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint,TrafficLightArray
 from geometry_msgs.msg import TwistStamped
-from python_common.helper import MathHelper
+from python_common.helper import Math3DHelper
 from enum import Enum
 
 import math
@@ -174,7 +174,7 @@ class WaypointUpdater(object):
         jerk = self.max_jerk
 
         next_wp = WaypointUpdater.find_next_waypoint(self.waypoints,pose,self.next_wp_idx)
-        d0 = WaypointUpdater.direct_distance(pose.pose.position, self.waypoints[next_wp].pose.pose.position)
+        d0 = Math3DHelper.distance(pose.pose.position, self.waypoints[next_wp].pose.pose.position)
 
         ds_samples, vs_samples = WaypointUpdater.generate_dist_vels(v0, vt, accel, jerk)
 
@@ -197,7 +197,7 @@ class WaypointUpdater(object):
         d = 0
         check_wp = 0
         for i in range(traffic_wp,0,-1):
-            d += WaypointUpdater.distance(self.waypoints,i-1,i)
+            d += WaypointUpdater.distance_waypoints(self.waypoints, i-1, i)
             if d > d_min:
                 check_wp = i-5 # reserve 4 waypoints before enter the brake zone
                 break
@@ -265,7 +265,7 @@ class WaypointUpdater(object):
         if self.tl_waypoint < msg.data and msg.data >self.next_wp_idx:
             rospy.logwarn("traffic light at Waypoint:%d is RED", self.tl_waypoint)
             self.tl_waypoint = msg.data
-            d = self.distance(self.waypoints, self.next_wp_idx, self.tl_waypoint)
+            d = WaypointUpdater.distance_waypoints(self.waypoints, self.next_wp_idx, self.tl_waypoint)
             self.brake_wps, self.brake_start_wp = self.generate_brake_path_with_constraint_distance(
                     self.current_vel, d)
 
@@ -306,7 +306,7 @@ class WaypointUpdater(object):
                 rospy.logwarn("state enters SPEED_UP")
 
             elif light_state== 1: # YELLOW
-                d = WaypointUpdater.distance(self.waypoints, self.next_wp_idx, next_tl_wp)
+                d = WaypointUpdater.distance_waypoints(self.waypoints, self.next_wp_idx, next_tl_wp)
                 self.augmented_wps = self.generate_brake_path(next_tl_wp, d)
                 if self.augmented_wps is None:
                     # self.augmented_wps= self.generate_speedup_path()
@@ -317,7 +317,7 @@ class WaypointUpdater(object):
                     self.traffic_state = Traffic.IN_STOPPING
             elif light_state == 0:# RED
                 rospy.logwarn("traffic light at Waypoint:%d is RED,state enters IN_STOPPING", next_tl_wp)
-                d = WaypointUpdater.distance(self.waypoints, self.next_wp_idx, next_tl_wp)
+                d = WaypointUpdater.distance_waypoints(self.waypoints, self.next_wp_idx, next_tl_wp)
                 self.augmented_wps = self.generate_brake_path(next_tl_wp, d,emergency=True)
                 self.traffic_state = Traffic.IN_STOPPING
 
@@ -384,7 +384,7 @@ class WaypointUpdater(object):
                 if d > distances[-1]:
                     wp_stop = i
                     break
-                d += WaypointUpdater.distance(waypoints, i, i + 1)
+                d += WaypointUpdater.distance_waypoints(waypoints, i, i + 1)
 
         else:
             for i in range(wp_idx,-1,-1):
@@ -395,7 +395,7 @@ class WaypointUpdater(object):
                 if d < distances[0]:
                     wp_start = i
                     break
-                d -= WaypointUpdater.distance(waypoints, i-1, i)
+                d -= WaypointUpdater.distance_waypoints(waypoints, i-1, i)
             # reverse the list for spline interpolation
             ds_origs = ds_origs[::-1]
             xs_origs = xs_origs[::-1]
@@ -481,15 +481,15 @@ class WaypointUpdater(object):
         :param start_wp: start waypoint index for search, default 0
         :return: predicted waypoint, next waypoint
         '''
-        next_wp = WaypointUpdater.find_next_waypoint(waypoints,pose,start_wp)
-        d0 = WaypointUpdater.direct_distance(pose.pose.position,waypoints[next_wp].pose.pose.position)
+        next_wp = WaypointUpdater.find_next_waypoint(waypoints, pose, start_wp)
+        d0 = Math3DHelper.distance(pose.pose.position, waypoints[next_wp].pose.pose.position)
         predict_d = vel*delay
         predict_wp = next_wp
 
         if predict_d > d0:
             d = d0
-            for i in range(next_wp+1,len(waypoints)):
-                d += WaypointUpdater.distance(waypoints,i-1,i)
+            for i in range(next_wp+1, len(waypoints)):
+                d += WaypointUpdater.distance_waypoints(waypoints, i-1, i)
                 predict_wp = i
                 if d > predict_d:
                     break
@@ -607,17 +607,14 @@ class WaypointUpdater(object):
         waypoints[waypoint].twist.twist.linear.x = velocity
 
     @staticmethod
-    def distance(waypoints, wp1, wp2):
+    def distance_waypoints(waypoints, start_wp_index, end_wp_index):
         dist = 0
-        dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
-        for i in range(wp1, wp2+1):
-            dist += dl(waypoints[wp1].pose.pose.position, waypoints[i].pose.pose.position)
-            wp1 = i
+        last_wp_index = start_wp_index
+        for current_wp_index in range(start_wp_index, end_wp_index+1):
+            dist += Math3DHelper.distance(waypoints[last_wp_index].pose.pose.position,
+                                             waypoints[current_wp_index].pose.pose.position)
+            last_wp_index = current_wp_index
         return dist
-
-    @staticmethod
-    def direct_distance(pos1,pos2):
-        return  math.sqrt((pos1.x - pos2.x) ** 2 + (pos1.y - pos2.y) ** 2 + (pos1.z - pos2.z) ** 2)
 
     @staticmethod
     def distance_2D_square(pos1, pos2):

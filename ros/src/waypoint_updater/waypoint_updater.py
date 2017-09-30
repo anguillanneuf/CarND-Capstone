@@ -610,8 +610,8 @@ class WaypointUpdater(object):
         return waypoint.twist.twist.linear.x
 
     @staticmethod
-    def set_waypoint_velocity(waypoints, waypoint, velocity):
-        waypoints[waypoint].twist.twist.linear.x = velocity
+    def set_waypoint_velocity(waypoint, velocity):
+        waypoint.twist.twist.linear.x = velocity
 
     @staticmethod
     def distance_waypoints(waypoints, start_wp_index, end_wp_index):

@@ -262,7 +262,7 @@ class WaypointUpdater(object):
 
         if self.augmented_wps is not None:
             predicted_wp, next_wp = WaypointUpdater.predict_next_waypoint(
-                self.augmented_wps, self.current_pose, self.current_vel, 0)
+                self.augmented_wps, self.current_pose, self.current_vel)
             #predicted_wp = next_wp
             lane.waypoints = self.augmented_wps[predicted_wp:]
             self.augmented_wps = self.augmented_wps[predicted_wp:]
@@ -294,7 +294,7 @@ class WaypointUpdater(object):
                 self.light_pos_wps.append(next_wp - 2)
 
     def traffic_cb(self, msg):
-        """Traffic light position coming from perception subsystem"""
+        """Traffic light position and state coming from perception subsystem"""
         return  # Curently disabled only light detection is implemented
         if self.waypoints is None or self.current_pose is None:
             return
@@ -325,7 +325,7 @@ class WaypointUpdater(object):
 
     def traffic_lights_cb(self, msg):
         """ /!\ Development only, available on simulator only, remove before submission /!\
-        3D position of traffc lights in the map coordinates system
+        3D position of traffic lights in the map coordinates system
         """
         def handle_free():
             for i in range(len(self.light_pos_wps)):
@@ -493,11 +493,10 @@ class WaypointUpdater(object):
     def find_next_waypoint(waypoints, pose, start_wp=0):
         """
         Get the next waypoint index
-        :param pose: related position
-        :param start_wp: start waypoint index for search, default 0
+        :param pose: car's position
+        :param start_wp: start waypoint index for search
         :return: index of next waypoint
         """
-
         d_min = float('inf')
         next_wp = start_wp
 
@@ -549,9 +548,10 @@ class WaypointUpdater(object):
     def predict_next_waypoint(waypoints, pose, vel, start_wp=0, delay=LATENCY):
         """
         Get the next waypoint index
-        :param pose: related position
-        :param vel: current velocity
-        :param start_wp: start waypoint index for search, default 0
+        :param pose: car's position
+        :param vel: car's velocity
+        :param start_wp: start waypoint index for search
+        :param delay: system latency
         :return: predicted waypoint, next waypoint
         """
         next_wp = WaypointUpdater.find_next_waypoint(waypoints, pose, start_wp)
@@ -574,7 +574,7 @@ class WaypointUpdater(object):
     @staticmethod
     def generate_dist_vels(v0, vt, accel, jerk):
         """
-        use a cubic spline to fit the distance vs speed
+        Use a cubic spline to fit the distance vs speed
         :param v0: start velocity
         :param vt: target velocity
         :param accel: maximum acceleration
@@ -607,13 +607,13 @@ class WaypointUpdater(object):
     @staticmethod
     def get_min_distance(v0, vt, accel, jerk, return_list=False):
         """
+        Calculate min distance needed to reach target velocity, applying max acceleration and jerk
         :param v0: start velocity
         :param vt: target velocity
         :param accel: max acceleration
         :param jerk: max jerk
         :return: list of key distances and list of time points
         """
-
         is_accel = True
         v0 = float(v0)
         vt = float(vt)

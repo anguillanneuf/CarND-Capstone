@@ -14,7 +14,7 @@ import math
 from scipy.interpolate import CubicSpline
 import copy
 
-'''
+"""
 This node will publish waypoints from the car's current position to some `x` distance ahead.
 
 As mentioned in the doc, you should ideally first implement a version which does not care
@@ -27,7 +27,7 @@ current status in `/vehicle/traffic_lights` message. You can use this message to
 as well as to verify your TL classifier.
 
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
-'''
+"""
 
 LOOKAHEAD_WPS = 10 # Number of waypoints we will publish. You can change this number
 T_STEP_SIZE = 0.02 #time step for slowdown or speedup
@@ -35,29 +35,34 @@ LATENCY = 0.2 # 100ms latency from planner to vehicle /simulator
 LOG = False # Set to true to enable logs
 
 class Traffic(Enum):
-
-    FREE =1
+    """ Traffic state"""
+    FREE = 1
     IN_BRAKE_ZONE = 2
-    IN_STOPPING =3
-    SPEED_UP=4
+    IN_STOPPING = 3
+    SPEED_UP = 4
 
 class WaypointUpdater(object):
+    """ Publishes waypoints from the car's current position to some `x` distance ahead."""
     def __init__(self):
         rospy.init_node('waypoint_updater')
-        
+
+        # Car's position
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
-        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
-        rospy.Subscriber('/obstacle_waypoint', PoseStamped, self.obstacle_cb)
+        # Car's velocity
         rospy.Subscriber('/current_velocity', TwistStamped, self.current_vel_cb)
+        # Waypoints to follow (coming from waypoint_loader)
+        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        # Traffic lights (coming from tge Perception subsystem)
+        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
+        # Obstacles (coming from the Perception subsystem)
+        rospy.Subscriber('/obstacle_waypoint', PoseStamped, self.obstacle_cb)
+        # /!\ Development only, available on simulator only, remove before submission /!\
+        # Provides you with the location of the traffic light in 3D map space
         rospy.Subscriber('/vehicle/traffic_lights',TrafficLightArray,self.traffic_lights_cb)
 
-        # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
-        rospy.Subscriber('/traffic_waypoint', Int32,self.traffic_cb)
-
+        # Final waypoints (for the control subsystem)
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
-        # TODO: Add other member variables you need below
         self.target_vel = rospy.get_param('/waypoint_loader/velocity', 20) * 0.27778
         self.max_accel = rospy.get_param('~max_accel', 1.)
         self.max_brake = rospy.get_param('~max_brake', 10.)
@@ -65,7 +70,6 @@ class WaypointUpdater(object):
         # only for test in simulator
         self.light_positions = rospy.get_param('~light_positions')
         self.light_pos_wps =[]
-
 
         # for normal driving
         self.waypoints = None
@@ -86,12 +90,13 @@ class WaypointUpdater(object):
         rospy.spin()
 
     def generate_brake_path(self, stop_wp,distance,emergency = False):
-        '''
+        """
+        Generate path for braking state
         :param stop_wp: waypoint index where car stops
         :param distance: distance required
         :param emergency: emergency brake
         :return: list of waypoints
-        '''
+        """
         min_d = WaypointUpdater.get_min_distance(self.current_vel, 0, self.max_brake, self.max_jerk)
 
         # check if there is enough distance to brake to stop
@@ -163,10 +168,11 @@ class WaypointUpdater(object):
             return list(interpolated_wps) + additional_wps
 
     def generate_speedup_path(self):
-        '''
+        """
+        Generate path for the speed up state
         update speed if car needs to stop at a position, it follows a slow-down to position and speedup afterwards
         :return: interpolated waypoints
-        '''
+        """
         pose = self.current_pose
         v0 = self.current_vel
         vt = self.target_vel
@@ -188,10 +194,10 @@ class WaypointUpdater(object):
         return list(interpolated_wps) + self.waypoints[stop_wp+1:stop_wp+LOOKAHEAD_WPS]
 
     def checkwp_before_traffic_light(self, traffic_wp):
-        '''
+        """
         :param traffic_wp:
         :return: return a wp car needs to check if traffic light color
-        '''
+        """
         d_min = WaypointUpdater.get_min_distance(self.target_vel, 0.0, self.max_brake / 2,
                                                  self.max_jerk, return_list=False)
         d = 0
@@ -205,8 +211,7 @@ class WaypointUpdater(object):
         return check_wp
 
     def pose_cb(self, msg):
-        # TODO: Done Implement
-
+        """Car's position callback"""
         if self.waypoints is None or self.next_wp_idx >= self.total_wp_num -1:
             return
         self.current_pose = msg
@@ -238,7 +243,7 @@ class WaypointUpdater(object):
         self.final_waypoints_pub.publish(lane)
 
     def waypoints_cb(self, waypoints):
-        # TODO: Done Implement
+        """waypoints to follow callback"""
         # rospy.logwarn('waypoints Received - count:%d',len(waypoints.waypoints))
         if self.waypoints is None:
             self.waypoints = waypoints.waypoints
@@ -255,12 +260,11 @@ class WaypointUpdater(object):
                 self.light_pos_wps.append(next_wp-2)
 
     def traffic_cb(self, msg):
-        # TODO: Callback for /traffic_waypoint message. Implement
-
+        """Traffic light position coming from perception subsystem"""
+        return # Curently disabled only light detection is implemented
         if self.waypoints is None or self.current_pose is None:
             return
 
-        return
         # traffic light state = red is detected
         if self.tl_waypoint < msg.data and msg.data >self.next_wp_idx:
             rospy.logwarn("traffic light at Waypoint:%d is RED", self.tl_waypoint)
@@ -281,7 +285,9 @@ class WaypointUpdater(object):
             self.tl_waypoint = -1
 
     def traffic_lights_cb(self,msg):
-
+        """ /!\ Development only, available on simulator only, remove before submission /!\
+        3D position of traffc lights in the map coordinates system
+        """
         def handle_free():
             for i in range(len(self.light_pos_wps)):
                 if self.next_wp_idx < self.light_pos_wps[i] + 5:
@@ -346,15 +352,16 @@ class WaypointUpdater(object):
         handlers[self.traffic_state]()
 
     def obstacle_cb(self, msg):
-        # TODO: Callback for /obstacle_waypoint message. We will implement it later
+        """Obstacles detected by the perception subsystem"""
         pass
 
     def current_vel_cb(self, msg):
+        """Car's velocity"""
         self.current_vel = msg.twist.linear.x
 
     @staticmethod
     def interpolate_waypoints( waypoints, wp_idx,d0,distances,velocities,wp_is_start=True):
-        '''
+        """
         :param waypoints:
         :param wp_idx:
         :param d0: distance of start or end waypoint of generated trajectory
@@ -362,7 +369,7 @@ class WaypointUpdater(object):
         :param velocities:
         :param wp_is_start:
         :return: intepolated waypoints with update of velocities,start_wp,stop_wp
-        '''
+        """
         if len(distances) < 2:
             rospy.logwarn("Interpolating does not have enough points")
             return [], 0, 0
@@ -428,18 +435,18 @@ class WaypointUpdater(object):
 
     @staticmethod
     def find_next_waypoint(waypoints,pose, start_wp=0):
-        '''
+        """
         Get the next waypoint index
         :param pose: related position
         :param start_wp: start waypoint index for search, default 0
         :return: index of next waypoint
-        '''
+        """
 
         d_min = float('inf')
         next_wp = start_wp
 
         for i in range(start_wp,len(waypoints)):
-            # only for comparision not necessary to calulate sqaure root .
+            # only for comparision not necessary to calulate square root .
             d = WaypointUpdater.distance_2D_square(pose.pose.position, waypoints[i].pose.pose.position)
             next_wp = i
 
@@ -474,13 +481,13 @@ class WaypointUpdater(object):
 
     @staticmethod
     def predict_next_waypoint(waypoints,pose, vel, start_wp=0, delay = LATENCY):
-        '''
+        """
         Get the next waypoint index
         :param pose: related position
         :param vel: current velocity
         :param start_wp: start waypoint index for search, default 0
         :return: predicted waypoint, next waypoint
-        '''
+        """
         next_wp = WaypointUpdater.find_next_waypoint(waypoints, pose, start_wp)
         d0 = Math3DHelper.distance(pose.pose.position, waypoints[next_wp].pose.pose.position)
         predict_d = vel*delay
@@ -498,14 +505,14 @@ class WaypointUpdater(object):
 
     @staticmethod
     def generate_dist_vels(v0, vt, accel, jerk):
-        '''
+        """
         use a cubic spline to fit the distance vs speed
         :param v0: start velocity
         :param vt: target velocity
         :param accel: maximum acceleration
         :param jerk:  maximum jerk
         :return: list of calculated distances, list of calculated velocities
-        '''
+        """
         ds,ts = WaypointUpdater.get_min_distance(v0,vt,accel,jerk,return_list=True)
         if len(ds) < 2:
             return [0],[v0]
@@ -527,13 +534,13 @@ class WaypointUpdater(object):
 
     @staticmethod
     def get_min_distance(v0, vt, accel, jerk, return_list = False):
-        '''
+        """
         :param v0: start velocity
         :param vt: target velocity
         :param accel: max acceleration
         :param jerk: max jerk
         :return: list of key distances and list of time points
-        '''
+        """
 
         is_accel = True
         v0 = float(v0)

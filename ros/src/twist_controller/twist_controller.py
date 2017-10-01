@@ -7,12 +7,12 @@ ONE_MPH = 0.44704
 
 
 class Controller(object):
-    def __init__(self, kp, ki, kd, vehicle_mass, fuel_capacity, accel_limit, brake_deadband, wheel_radius, wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle):
+    def __init__(self, kp, ki, kd, vehicle_mass, fuel_capacity, decel_limit, accel_limit, brake_deadband, wheel_radius, wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle):
         # TODO: Implement
         # self.max_torque = abs(max_torque)
-        self.accel_limit = accel_limit
+        # self.accel_limit = accel_limit
         self.brake_deadband = brake_deadband
-        self.pid = PID(kp,ki,kd, -10,0.5)
+        self.pid = PID(kp,ki,kd, decel_limit, accel_limit)
 
         self.yaw = YawController(wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle)
 

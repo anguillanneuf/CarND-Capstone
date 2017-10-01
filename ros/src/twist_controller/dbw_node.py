@@ -38,12 +38,11 @@ class DBWNode(object):
         rospy.init_node('dbw_node')
 
         vehicle_mass = rospy.get_param('~vehicle_mass', 1736.35)
-        # fuel_capacity = rospy.get_param('~fuel_capacity', 13.5)
+        fuel_capacity = rospy.get_param('~fuel_capacity', 13.5)
         brake_deadband = rospy.get_param('~brake_deadband', .1)
         decel_limit = rospy.get_param('~decel_limit', -10)
         accel_limit = rospy.get_param('~accel_limit', 1.)
         wheel_radius = rospy.get_param('~wheel_radius',0.335)
-        # wheel_radius = rospy.get_param('~wheel_radius', 0.2413)
         wheel_base = rospy.get_param('~wheel_base', 2.8498)
         steer_ratio = rospy.get_param('~steer_ratio', 14.8)
         max_lat_accel = rospy.get_param('~max_lat_accel', 3.)
@@ -54,7 +53,7 @@ class DBWNode(object):
         min_speed = 0.1
 
         # x4 for 4 wheels of car
-        max_torque = vehicle_mass*decel_limit*wheel_radius *4 * 1.0
+        #max_torque = vehicle_mass*decel_limit*wheel_radius *4 * 1.0
 
         self.steer_pub = rospy.Publisher('/vehicle/steering_cmd',
                                          SteeringCmd, queue_size=1)
@@ -64,8 +63,7 @@ class DBWNode(object):
                                          BrakeCmd, queue_size=1)
 
         # TODO: Create `TwistController` object
-        self.controller = Controller(kp,ki,kd,max_torque,accel_limit,brake_deadband,wheel_base, steer_ratio,
-                                     min_speed, max_lat_accel, max_steer_angle)
+        self.controller = Controller(kp,ki,kd, vehicle_mass, fuel_capacity, accel_limit, brake_deadband, wheel_radius, wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle)
 
         # TODO: Subscribe to all the topics you need to
         rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_cb)

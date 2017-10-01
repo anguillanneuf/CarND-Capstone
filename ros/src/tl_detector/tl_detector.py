@@ -190,16 +190,17 @@ class TLDetector(object):
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
 
         x, y = self.project_to_image_plane(light.pose.pose.position)
+        print "Projected TL center on camera image is (%d, %d)" % (x, y)
 
         #TODO use light location to zoom in on traffic light in image
-        h, w, c = cv_image.shape
-        cpy = cv_image.copy()
-        cv2.circle(cpy, center = (x,y), radius = 30, color = (200, 255, 255), thickness = 5)
-        cv2.circle(cpy, center = (x,y), radius = 15, color = (0, 255, 255), thickness = 5)
-        cv2.imwrite('traffic_lights_processed/processed_'+str(time.time())[:10]+'.png', cpy)
+        #h, w, c = cv_image.shape
+        #cpy = cv_image.copy()
+        #cv2.circle(cpy, center = (x,y), radius = 30, color = (200, 255, 255), thickness = 5)
+        #cv2.circle(cpy, center = (x,y), radius = 15, color = (0, 255, 255), thickness = 5)
+        #cv2.imwrite('traffic_lights_processed/processed_'+str(time.time())[:10]+'.png', cpy)
         
         # TODO: crop cv_image
-
+        
         #Get classification
         return self.light_classifier.get_classification(cv_image)
 
@@ -217,7 +218,7 @@ class TLDetector(object):
         # List of positions that correspond to the line to stop in front of for a given intersection
         stop_line_positions = self.config['stop_line_positions']
 
-        if(self.pose):
+        if self.pose and self.waypoints:
             # get the closest waypoint index for car
             car_wp = self.get_closest_waypoint(self.pose.pose)
 
@@ -243,6 +244,7 @@ class TLDetector(object):
             light_wp = self.get_closest_waypoint(stop_line)
             state = self.get_light_state(light)
             # rospy.logwarn("(tianzi) traffic light ahead at wp: %d", light_wp)
+            print "Closest TL ahead (waypoint index): %d" % (light_wp)
             return light_wp, state
         self.waypoints = None
         return -1, TrafficLight.UNKNOWN

@@ -11,7 +11,6 @@ import tf
 import cv2
 import yaml
 import math
-import PIL
 import numpy as np
 
 #from keras.models import load_model
@@ -188,44 +187,40 @@ class TLDetector(object):
         Returns:
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
         """
-        ###TODO(denise) Replace with CV later
+
         if(not self.has_image):
             self.prev_light_loc = None
             return False
 
-        self.camera_image.encoding = "rgb8"
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
         h, w, c = cv_image.shape
 
         x_center, y_center = self.project_to_image_plane(light.pose.pose.position)
 
         top = Point()
-        top.x = light.pose.pose.position.x+3
+        top.x = light.pose.pose.position.x-3
         top.y = light.pose.pose.position.y-3
         bottom = Point()
-        bottom.x = light.pose.pose.position.x-3 
+        bottom.x = light.pose.pose.position.x+3 
         bottom.y = light.pose.pose.position.y+3
         x_top, y_top = self.project_to_image_plane(top)
         x_bottom, y_bottom = self.project_to_image_plane(bottom)
-        print("(PRIOR) center: %d, %d top: %d, %d bottom: %d, %d" %(x_center, y_center, 
-                                                            x_top, y_top,
-                                                            x_bottom, y_bottom))
+        print("(PRIOR) x: (%d, %d, %d) y: (%d, %d, %d)" %(x_top, x_center, x_bottom, 
+                                                          y_top, y_center, y_bottom))
 
-        if x_center < 0 or y_center < 0:
+        if x_center < 0 or y_center < 0 or x_center > 800 or y_center > 600:
             return TrafficLight.UNKNOWN
 
         #crop image
-        #TODO (denise) need make sure this is the correct area to crop
         cpy = cv_image.copy()
 
-        x_top = min(600, max(x_top, 0))
-        x_bottom = min(600, max(x_bottom, 0))
-        y_top = min(800, max(y_top, 0))
-        y_bottom = min(800, max(y_bottom, 0))
+        x_top = min(800, max(x_top, 0))
+        x_bottom = min(800, max(x_bottom, 0))
+        y_top = min(600, max(y_top, 0))
+        y_bottom = min(600, max(y_bottom, 0))
 
-        print("(POSTERIOR) center: %d, %d top: %d, %d bottom: %d, %d" %(x_center, y_center, 
-                                                            x_top, y_top,
-                                                            x_bottom, y_bottom))
+        print("(POSTERIOR) x: (%d, %d, %d) y: (%d, %d, %d)" %(x_top, x_center, x_bottom, 
+                                                              y_top, y_center, y_bottom))
 
         #crop_img = cpy[int(y_center):int(y_top), int(x_center):int(x_top)]
 

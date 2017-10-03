@@ -24,8 +24,6 @@ class TLDetector(object):
     def __init__(self):
         rospy.init_node('tl_detector')
 
-        rate = rospy.Rate(2) 
-
         self.pose = None
         self.waypoints = None
         self.camera_image = None
@@ -199,10 +197,10 @@ class TLDetector(object):
 
         top = Point()
         top.x = light.pose.pose.position.x-3
-        top.y = light.pose.pose.position.y-3
+        top.y = light.pose.pose.position.y
         bottom = Point()
         bottom.x = light.pose.pose.position.x+3 
-        bottom.y = light.pose.pose.position.y+3
+        bottom.y = light.pose.pose.position.y
         x_top, y_top = self.project_to_image_plane(top)
         x_bottom, y_bottom = self.project_to_image_plane(bottom)
         print("(PRIOR) x: (%d, %d, %d) y: (%d, %d, %d)" %(x_top, x_center, x_bottom, 
@@ -224,12 +222,13 @@ class TLDetector(object):
 
         #crop_img = cpy[int(y_center):int(y_top), int(x_center):int(x_top)]
 
-        # cv2.circle(cpy,(x_center, y_center), 20, (0,255,255), 2)
+        cv2.circle(cpy,(x_center, y_center), 20, (0,255,255), 2)
         # rospy.loginfo("TL_center.x %d, TL_center.y %d", np.max(x_center, y_center))
 
         # write out some images
-        #tm = rospy.get_rostime()
-        #cv2.imwrite('traffic_lights_processed/processed_'+str(tm.secs)+'_'+str(tm.nsecs)+'.png', crop_img)
+        tm = rospy.get_rostime()
+        cv2.imwrite('traffic_lights_processed/raw_'+str(tm.secs)+'_'+str(tm.nsecs)+'.png', cv_image)
+        cv2.imwrite('traffic_lights_processed/processed_'+str(tm.secs)+'_'+str(tm.nsecs)+'.png', cpy)
 
         return self.light_classifier.get_classification(cv_image)
 

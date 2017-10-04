@@ -165,12 +165,17 @@ class TLDetector(object):
                 point_in_world.x*sin_yaw + point_in_world.y*cos_yaw + trans[1], 
                 point_in_world.z + trans[2])
 
-            # manual tweaking
-            if fx < 10:
-                fx = 2574
-                fy = 2744
-                cx = image_width/2 - 30
-                cy = image_height + 50
+            # manual tweaking because focal lengths provided are in FOV radians
+            if fx < 10: 
+                #fx = 2574
+                #fy = 2744
+                #cx = image_width/2 - 30
+                #cy = image_height + 50
+                fx = math.tan(fx/2)*image_width*2
+                fy = math.tan(fy/2)*image_height*2
+                cx = image_width/2
+                cy = image_height/2
+
 
             # Note axis changes: car.x = img.z, car.y = img.x, car.z = img.y
             x = int(fx * (-Rt[1])/Rt[0] + cx)
@@ -193,32 +198,39 @@ class TLDetector(object):
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
         h, w, c = cv_image.shape
 
-        x_center, y_center = self.project_to_image_plane(light.pose.pose.position)
 
+        print(light.pose.pose.position.z)
+        center = Point()
+        center.x = light.pose.pose.position.x
+        center.y = light.pose.pose.position.y
+        center.z = 0        
         top = Point()
         top.x = light.pose.pose.position.x-3
         top.y = light.pose.pose.position.y
+        top.z = 0
         bottom = Point()
         bottom.x = light.pose.pose.position.x+3 
         bottom.y = light.pose.pose.position.y
+        bottom.z = 0
+        x_center, y_center = self.project_to_image_plane(center)
         x_top, y_top = self.project_to_image_plane(top)
         x_bottom, y_bottom = self.project_to_image_plane(bottom)
         print("(PRIOR) x: (%d, %d, %d) y: (%d, %d, %d)" %(x_top, x_center, x_bottom, 
                                                           y_top, y_center, y_bottom))
 
-        if x_center < 0 or y_center < 0 or x_center > 800 or y_center > 600:
+        if x_center <= 0 or y_center <= 0 or x_center >= 800 or y_center >= 600:
             return TrafficLight.UNKNOWN
 
         #crop image
         cpy = cv_image.copy()
 
-        x_top = min(800, max(x_top, 0))
-        x_bottom = min(800, max(x_bottom, 0))
-        y_top = min(600, max(y_top, 0))
-        y_bottom = min(600, max(y_bottom, 0))
+        #x_top = min(800, max(x_top, 0))
+        #x_bottom = min(800, max(x_bottom, 0))
+        #y_top = min(600, max(y_top, 0))
+        #y_bottom = min(600, max(y_bottom, 0))
 
-        print("(POSTERIOR) x: (%d, %d, %d) y: (%d, %d, %d)" %(x_top, x_center, x_bottom, 
-                                                              y_top, y_center, y_bottom))
+        #print("(POSTERIOR) x: (%d, %d, %d) y: (%d, %d, %d)" %(x_top, x_center, x_bottom, 
+        #                                                      y_top, y_center, y_bottom))
 
         #crop_img = cpy[int(y_center):int(y_top), int(x_center):int(x_top)]
 
@@ -227,7 +239,7 @@ class TLDetector(object):
 
         # write out some images
         tm = rospy.get_rostime()
-        cv2.imwrite('traffic_lights_processed/raw_'+str(tm.secs)+'_'+str(tm.nsecs)+'.png', cv_image)
+        #cv2.imwrite('traffic_lights_processed/raw_'+str(tm.secs)+'_'+str(tm.nsecs)+'.png', cv_image)
         cv2.imwrite('traffic_lights_processed/processed_'+str(tm.secs)+'_'+str(tm.nsecs)+'.png', cpy)
 
         return self.light_classifier.get_classification(cv_image)
@@ -258,7 +270,7 @@ class TLDetector(object):
             	                  self.pose.pose.position.y - self.lights[i].pose.pose.position.y)
                 light_wp = self.get_closest_waypoint(self.lights[i].pose.pose)
 
-                if car_wp-30 < light_wp and dist < min_dist: # manual tweak
+                if car_wp < light_wp and dist < min_dist: # manual tweak
                     min_dist = dist 
                     light_index = i
                     light = self.lights[i]

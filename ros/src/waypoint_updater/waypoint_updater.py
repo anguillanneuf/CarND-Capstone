@@ -52,11 +52,11 @@ class WaypointUpdater(object):
         # Waypoints to follow (coming from waypoint_loader)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         # Traffic lights (coming from tge Perception subsystem)
-        #rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
+        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
         # Obstacles (coming from the Perception subsystem)
         rospy.Subscriber('/obstacle_waypoint', PoseStamped, self.obstacle_cb)
 
-        rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_lights_cb)
+        # rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_lights_cb)
 
         # Final waypoints (for the control subsystem)
         self.final_waypoints_pub = rospy.Publisher(

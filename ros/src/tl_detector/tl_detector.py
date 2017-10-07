@@ -175,7 +175,7 @@ class TLDetector(object):
 
             # Note axis changes: car.x = img.z, car.y = img.x, car.z = img.y
             x = int(fx * (-Rt[1])/Rt[0] + image_width/2)
-            y = int(fy * (-Rt[2])/Rt[0] + image_height/2)
+            y = int(fy * (-Rt[2])/Rt[0] + image_height)
 
         return (x, y)
 
@@ -232,16 +232,16 @@ class TLDetector(object):
             car_wp = self.get_closest_waypoint(self.pose.pose)
 
             # Finds the closest waypoint index of the next stopline
-            min_dist = 1e2
+            min_dist = 150
             for i in range(len(stop_line_positions)):
-                dist = math.hypot(self.pose.pose.position.x - stop_line_positions[i][0],
-                                  self.pose.pose.position.y - stop_line_positions[i][1])
                 
                 stopline = Pose()
                 stopline.position.x = stop_line_positions[i][0]
                 stopline.position.y = stop_line_positions[i][1]
 
                 stopline_wp_ = self.get_closest_waypoint(stopline)
+
+                dist = 0.5 * abs(stopline_wp_ - car_wp) # rough estimate of distance
 
                 if car_wp < stopline_wp_ and dist < min_dist:
                     min_dist = dist
@@ -253,6 +253,7 @@ class TLDetector(object):
             light_wp = self.get_closest_waypoint(light.pose.pose)
             state = self.get_light_state(light)
             if LOG:
+                #print(car_wp); print(stopline_wp); print(min_dist)
                 rospy.logwarn("TL wp %d, Stop line wp %d" % (light_wp, stopline_wp))
             return light_wp, state
         self.waypoints = None

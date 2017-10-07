@@ -42,6 +42,28 @@ class WaypointUpdater(object):
     def __init__(self):
         rospy.init_node('waypoint_updater')
 
+        # for normal driving
+        self.waypoints = None
+        # distance to next waypoint
+        self.wp_distances = []
+        self.total_wp_num = 0
+        self.current_pose = None
+        self.next_wp_idx = 0
+        self.current_vel = 0
+
+        # for traffic light handling
+        self.tf_state = "no_traffic"
+        self.augmented_wps = None
+        self.tl_waypoint = -1
+        # stoplines positions
+        self.stoplines_wps = []
+        self.next_tf_idx = 0
+
+        self.target_vel = rospy.get_param('/waypoint_loader/velocity', 40) * 0.27778
+        self.max_accel = rospy.get_param('~max_accel', 8.)
+        self.max_brake = rospy.get_param('~max_brake', 10.)
+        self.max_jerk = rospy.get_param('~max_jerk',10.)
+
         # Car's position
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         # Car's velocity
@@ -61,29 +83,6 @@ class WaypointUpdater(object):
         # Final waypoints (for the control subsystem)
         self.final_waypoints_pub = rospy.Publisher(
             'final_waypoints', Lane, queue_size=1)
-
-        self.target_vel = rospy.get_param(
-            '/waypoint_loader/velocity', 20) * 0.27778
-        self.max_accel = rospy.get_param('~max_accel', 8.)
-        self.max_brake = rospy.get_param('~max_brake', 10.)
-        self.max_jerk = rospy.get_param('~max_jerk')
-
-        # for normal driving
-        self.waypoints = None
-        # distance to next waypoint
-        self.wp_distances =[]
-        self.total_wp_num = 0
-        self.current_pose = None
-        self.next_wp_idx = 0
-        self.current_vel = 0
-
-        # for traffic light handling
-        self.tf_state = "no_traffic"
-        self.augmented_wps = None
-        self.tl_waypoint = -1
-        # stoplines positions
-        self.stoplines_wps = []
-        self.next_tf_idx = 0
 
         rospy.spin()
 

@@ -197,7 +197,7 @@ class TLDetector(object):
 
         x, y = self.project_to_image_plane(light.pose.pose.position)
         if LOG:
-            rospy.logwarn("(tianzi) next TL has center (%d, %d)" % (x, y))
+            rospy.logwarn("TL has center (%d, %d)" % (x, y))
 
         #TODO use light location to zoom in on traffic light in image
         #h, w, c = cv_image.shape
@@ -227,40 +227,33 @@ class TLDetector(object):
         # List of positions that correspond to the line to stop in front of for a given intersection
         stop_line_positions = self.config['stop_line_positions']
 
-        if(self.pose):
-            # get the closest waypoint index for car
+        if self.pose and self.waypoints:
+            # Finds the closest waypoint index of the car
             car_wp = self.get_closest_waypoint(self.pose.pose)
 
-            # get the cloesst waypoint index for closest TL ahead
-            min_dist = 1e4
-            for i in range(len(self.lights)):
-                dist = math.hypot(self.pose.pose.position.x - self.lights[i].pose.pose.position.x,
-                                  self.pose.pose.position.y - self.lights[i].pose.pose.position.y)
-                light_wp_ = self.get_closest_waypoint(self.lights[i].pose.pose)
+            # Finds the closest waypoint index of the next stopline
+            min_dist = 1e2
+            for i in range(len(stop_line_positions)):
+                dist = math.hypot(self.pose.pose.position.x - stop_line_positions[i][0],
+                                  self.pose.pose.position.y - stop_line_positions[i][1])
+                
+                stopline = Pose()
+                stopline.position.x = stop_line_positions[i][0]
+                stopline.position.y = stop_line_positions[i][1]
 
-                if car_wp < light_wp_ and dist < min_dist:
-                    min_dist = dist 
-                    light_index = i
+                stopline_wp_ = self.get_closest_waypoint(stopline)
+
+                if car_wp < stopline_wp_ and dist < min_dist:
+                    min_dist = dist
                     light = self.lights[i]
-                    light_wp = light_wp_
+                    stopline_wp = stopline_wp_
 
-        #TODO find the closest visible traffic light (if one exists)
+        #TODO Finds the closest visible traffic light (if one exists)
         if light:
-            if LOG:
-                rospy.logwarn("(tianzi) next TL (%d, %d, %d) at wp: %d" % (light.pose.pose.position.x,
-                                                                           light.pose.pose.position.y,
-                                                                           light.pose.pose.position.z,
-                                                                           light_wp))
-            # get the closest waypoint index for upcoming stop line
-            stop_line = Pose()
-            stop_line.position.x = stop_line_positions[light_index][0]
-            stop_line.position.y = stop_line_positions[light_index][1]
-            stop_line.position.z = 0
-            stopline_wp = self.get_closest_waypoint(stop_line)
+            light_wp = self.get_closest_waypoint(light.pose.pose)
             state = self.get_light_state(light)
             if LOG:
-                rospy.logwarn("(tianzi) next TL's stop line at wp: %d " %(stopline_wp))
-
+                rospy.logwarn("TL wp %d, Stop line wp %d" % (light_wp, stopline_wp))
             return light_wp, state
         self.waypoints = None
         return -1, TrafficLight.UNKNOWN

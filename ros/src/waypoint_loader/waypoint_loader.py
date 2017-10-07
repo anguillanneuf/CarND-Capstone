@@ -5,7 +5,7 @@ import csv
 import math
 
 from geometry_msgs.msg import Quaternion
-from python_common.helper import MathHelper
+from python_common.helper import Math3DHelper
 from styx_msgs.msg import Lane, Waypoint
 
 import tf
@@ -60,7 +60,7 @@ class WaypointLoader(object):
         last = waypoints[-1]
         last.twist.twist.linear.x = 0.
         for wp in waypoints[:-1][::-1]:
-            dist = MathHelper.distance(wp.pose.pose.position, last.pose.pose.position)
+            dist = Math3DHelper.distance(wp.pose.pose.position, last.pose.pose.position)
             vel = math.sqrt(2 * MAX_DECEL * dist) * 3.6
             if vel < 1.:
                 vel = 0.

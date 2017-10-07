@@ -243,7 +243,7 @@ class TLDetector(object):
 
                 index_dist = abs(stopline_wp_ - car_wp)
 
-                if index_dist < min_index_dist:
+                if index_dist < min_index_dist and car_wp < stopline_wp_ :
                     min_index_dist = index_dist
                     light = self.lights[i]
                     stopline_wp = stopline_wp_

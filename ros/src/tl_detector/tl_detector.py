@@ -12,7 +12,6 @@ import cv2
 import yaml
 import math
 import numpy as np
-import time
 import sys
 
 STATE_COUNT_THRESHOLD = 3
@@ -88,7 +87,7 @@ class TLDetector(object):
         if self.state != state:
             self.state_count = 0
             self.state = state
-        elif self.state_count >= STATE_COUNT_THRESHOLD:
+        elif self.state_count >= STATE_COUNT_THRESHOLD and self.last_state != self.state:
             self.last_state = self.state
             light_wp = light_wp if state == TrafficLight.RED else -1
             self.last_wp = light_wp

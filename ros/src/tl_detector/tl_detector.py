@@ -16,7 +16,7 @@ import time
 import sys
 
 STATE_COUNT_THRESHOLD = 3
-LOG = True
+LOG = False
 
 class TLDetector(object):
     def __init__(self):

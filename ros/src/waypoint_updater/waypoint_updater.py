@@ -34,15 +34,6 @@ T_STEP_SIZE = 0.02  # time step for slowdown or speedup
 LATENCY = 0.2  # 100ms latency from planner to vehicle /simulator
 LOG = False  # Set to true to enable logs
 
-
-class Traffic(Enum):
-    """ Traffic state"""
-    FREE = 1
-    IN_BRAKE_ZONE = 2
-    IN_STOPPING = 3
-    SPEED_UP = 4
-
-
 class WaypointUpdater(object):
     """ Publishes waypoints from the car's current position to some `x` distance ahead."""
 
@@ -62,12 +53,6 @@ class WaypointUpdater(object):
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
         # Obstacles (coming from the Perception subsystem)
         rospy.Subscriber('/obstacle_waypoint', PoseStamped, self.obstacle_cb)
-        # /!\ Development only, available on simulator only, remove before submission /!\
-        # Provides you with the location of the traffic light in 3D map space
-        rospy.Subscriber(
-            '/vehicle/traffic_lights',
-            TrafficLightArray,
-            self.traffic_lights_cb)
 
         # Final waypoints (for the control subsystem)
         self.final_waypoints_pub = rospy.Publisher(
@@ -78,25 +63,13 @@ class WaypointUpdater(object):
         self.max_accel = rospy.get_param('~max_accel', 1.)
         self.max_brake = rospy.get_param('~max_brake', 10.)
         self.max_jerk = rospy.get_param('~max_jerk')
-        # only for test in simulator
-        self.light_positions = rospy.get_param('~light_positions')
-        self.light_pos_wps = []
 
         # for normal driving
         self.waypoints = None
-        self.total_wp_num = 0
         self.current_pose = None
         self.next_wp_idx = 0
         self.current_vel = 0
-
-        # for traffic light handling
-        self.augmented_wps = None
-
-        self.next_tf_idx = -1
-        self.check_tf_wp = 0
-
-        self.tl_waypoint = -1
-        self.traffic_state = Traffic.FREE
+        self.light_wp = -1
 
         rospy.spin()
 
@@ -245,161 +218,40 @@ class WaypointUpdater(object):
 
     def pose_cb(self, msg):
         """Car's position callback"""
-        if self.waypoints is None or self.next_wp_idx >= self.total_wp_num - 1:
-            return
         self.current_pose = msg
+
+        if self.waypoints is None or self.next_wp_idx >= len(self.waypoints) - 1:
+            return
+
+        # find next waypoint index
+        predicted_wp, self.next_wp_idx = WaypointUpdater.predict_next_waypoint(
+            self.waypoints, self.current_pose, self.current_vel, self.next_wp_idx)
+
+        # traffic light state = red is detected
+        if self.light_wp > -1 and self.light_wp > self.next_wp_idx:
+            rospy.logwarn("traffic light at Waypoint:%d is RED", self.light_wp)
+            d = WaypointUpdater.distance_waypoints(
+                self.waypoints, self.next_wp_idx, self.light_wp)
+            augmented_wps = self.generate_brake_path(self.current_vel, self.light_wp, d)
+        else:
+            rospy.logwarn("Ignore TF")
+            augmented_wps = self.generate_speedup_path()
+
         # get next waypoint index
         lane = Lane()
         lane.header.frame_id = '/world'
         lane.header.stamp = rospy.Time.now()
-        # find next waypoint index
-        predicted_wp, next_wp_idx = WaypointUpdater.predict_next_waypoint(
-            self.waypoints, self.current_pose, self.current_vel, self.next_wp_idx)
+        lane.waypoints = augmented_wps
 
-        #predicted_wp = next_wp_idx
-        # if next_wp_idx > self.next_wp_idx:
-        #    rospy.logwarn("Next WayPoint:%d", next_wp_idx)
-
-        if self.augmented_wps is not None:
-            predicted_wp, next_wp = WaypointUpdater.predict_next_waypoint(
-                self.augmented_wps, self.current_pose, self.current_vel)
-            #predicted_wp = next_wp
-            lane.waypoints = self.augmented_wps[predicted_wp:]
-            self.augmented_wps = self.augmented_wps[predicted_wp:]
-        else:
-            # publish normal waypoints
-            start = min(len(self.waypoints) - 1, predicted_wp)
-            stop = min(predicted_wp + LOOKAHEAD_WPS, self.total_wp_num)
-            lane.waypoints = self.waypoints[start:stop]
-
-        self.next_wp_idx = next_wp_idx
         self.final_waypoints_pub.publish(lane)
 
     def waypoints_cb(self, waypoints):
         """waypoints to follow callback"""
-        # rospy.logwarn('waypoints Received - count:%d',len(waypoints.waypoints))
-        if self.waypoints is None:
-            self.waypoints = waypoints.waypoints
-            self.total_wp_num = len(self.waypoints)
-            self.brake_start_wp = self.total_wp_num
-            self.check_tf_wp = self.total_wp_num
-            # following code is used for test traffic lights
-            next_wp = 0
-            for tf in self.light_positions:
-                p = PoseStamped()
-                p.pose.position.x = tf[0]
-                p.pose.position.y = tf[1]
-                next_wp = WaypointUpdater.find_next_waypoint(
-                    self.waypoints, p, next_wp)
-                self.light_pos_wps.append(next_wp - 2)
+        self.waypoints = waypoints.waypoints
 
     def traffic_cb(self, msg):
         """Traffic light position and state coming from perception subsystem"""
-        return  # Curently disabled only light detection is implemented
-        if self.waypoints is None or self.current_pose is None:
-            return
-
-        # traffic light state = red is detected
-        if self.tl_waypoint < msg.data and msg.data > self.next_wp_idx:
-            rospy.logwarn(
-                "traffic light at Waypoint:%d is RED",
-                self.tl_waypoint)
-            self.tl_waypoint = msg.data
-            d = WaypointUpdater.distance_waypoints(
-                self.waypoints, self.next_wp_idx, self.tl_waypoint)
-            self.brake_wps, self.brake_start_wp = self.generate_brake_path_with_constraint_distance(
-                self.current_vel, d)
-
-        # traffic light previous is red
-        elif msg.data == -1 and self.next_wp_idx > self.tl_waypoint and self.tl_waypoint != -1:
-
-            rospy.logwarn(
-                "traffic light at Waypoint:%d is GREEN",
-                self.tl_waypoint)
-            # stop braking
-            self.brake_start_wp = self.total_wp_num
-            # speed upa car
-            self.speedup_wps, self.speedup_stop_wp = self.generate_speedup_path(
-                self.current_vel, self.target_vel, self.current_pose.pose)
-            self.tl_waypoint = -1
-
-    def traffic_lights_cb(self, msg):
-        """ /!\ Development only, available on simulator only, remove before submission /!\
-        3D position of traffic lights in the map coordinates system
-        """
-        def handle_free():
-            for i in range(len(self.light_pos_wps)):
-                if self.next_wp_idx < self.light_pos_wps[i] + 5:
-                    if i != self.next_tf_idx:
-                        self.next_tf_idx = i
-                        self.check_tf_wp = self.checkwp_before_traffic_light(
-                            self.light_pos_wps[i])
-                        rospy.logwarn(
-                            "Next traffic idx %d, waypoint at: %d, start to check  at:%d",
-                            i,
-                            self.light_pos_wps[i],
-                            self.check_tf_wp)
-                    break
-            if self.next_wp_idx > self.check_tf_wp:
-                self.traffic_state = Traffic.IN_BRAKE_ZONE
-                rospy.logwarn("state enters IN_BRAKE_ZONE")
-
-        def handle_in_brakezone():
-            # check car travels through the traffic position
-            next_tl_wp = self.light_pos_wps[self.next_tf_idx]
-            light_state = msg.lights[self.next_tf_idx].state
-            if self.next_wp_idx >= next_tl_wp:
-                # generate speed up path
-                self.traffic_state = Traffic.SPEED_UP
-                self.augmented_wps = None
-                rospy.logwarn("state enters SPEED_UP")
-
-            elif light_state == 1:  # YELLOW
-                d = WaypointUpdater.distance_waypoints(
-                    self.waypoints, self.next_wp_idx, next_tl_wp)
-                self.augmented_wps = self.generate_brake_path(next_tl_wp, d)
-                if self.augmented_wps is None:
-                    # self.augmented_wps= self.generate_speedup_path()
-                    self.traffic_state = Traffic.SPEED_UP
-                    WaypointUpdater.log_tf_color_and_state(
-                        next_tl_wp, "YELLOW", self.traffic_state)
-                else:
-                    self.traffic_state = Traffic.IN_STOPPING
-                    WaypointUpdater.log_tf_color_and_state(
-                        next_tl_wp, "YELLOW", self.traffic_state)
-            elif light_state == 0:  # RED
-                d = WaypointUpdater.distance_waypoints(
-                    self.waypoints, self.next_wp_idx, next_tl_wp)
-                self.augmented_wps = self.generate_brake_path(
-                    next_tl_wp, d, emergency=True)
-                self.traffic_state = Traffic.IN_STOPPING
-                WaypointUpdater.log_tf_color_and_state(
-                    next_tl_wp, "RED", self.traffic_state)
-
-        def handle_in_stopping():
-            if msg.lights[self.next_tf_idx].state == 2:
-                # self.augmented_wps = self.generate_speedup_path()
-                self.augmented_wps = None
-                self.traffic_state = Traffic.SPEED_UP
-                WaypointUpdater.log_tf_color_and_state(
-                    self.light_pos_wps[self.next_tf_idx], "GREEN", self.traffic_state)
-
-        def handle_speedup():
-            if self.next_wp_idx > self.light_pos_wps[self.next_tf_idx] + 5:
-                self.traffic_state = Traffic.FREE
-                rospy.logwarn("state enters FREE")
-
-        # rospy.logwarn("traffic lights count %d", len(msg.lights))
-        if self.waypoints is None or self.current_pose is None or self.next_tf_idx >= len(
-                self.light_positions):
-            return
-
-        handlers = {Traffic.FREE: handle_free,
-                    Traffic.IN_BRAKE_ZONE: handle_in_brakezone,
-                    Traffic.SPEED_UP: handle_speedup,
-                    Traffic.IN_STOPPING: handle_in_stopping}
-
-        handlers[self.traffic_state]()
+        self.light_wp = msg.data
 
     def obstacle_cb(self, msg):
         """Obstacles detected by the perception subsystem"""

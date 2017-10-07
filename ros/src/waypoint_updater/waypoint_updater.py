@@ -52,9 +52,11 @@ class WaypointUpdater(object):
         # Waypoints to follow (coming from waypoint_loader)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         # Traffic lights (coming from tge Perception subsystem)
-        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
+        #rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
         # Obstacles (coming from the Perception subsystem)
         rospy.Subscriber('/obstacle_waypoint', PoseStamped, self.obstacle_cb)
+
+        rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_lights_cb)
 
         # Final waypoints (for the control subsystem)
         self.final_waypoints_pub = rospy.Publisher(
@@ -68,6 +70,8 @@ class WaypointUpdater(object):
 
         # for normal driving
         self.waypoints = None
+        # distance to next waypoint
+        self.wp_distances =[]
         self.total_wp_num = 0
         self.current_pose = None
         self.next_wp_idx = 0
@@ -79,6 +83,7 @@ class WaypointUpdater(object):
         self.tl_waypoint = -1
         # stoplines positions
         self.stoplines_wps = []
+        self.next_tf_idx = 0
 
         rospy.spin()
 
@@ -131,6 +136,14 @@ class WaypointUpdater(object):
         if self.waypoints is None:
             self.waypoints = waypoints.waypoints
             self.total_wp_num = len(self.waypoints)
+            self.wp_distances = [ Math3DHelper.distance(
+                self.waypoints[i].pose.pose.position,
+                self.waypoints[i+1].pose.pose.position) for i in range(self.total_wp_num-1)]
+            # last point to first point as a loop
+            self.wp_distances.append(Math3DHelper.distance(
+                self.waypoints[-1].pose.pose.position,
+                self.waypoints[0].pose.pose.position))
+
             # read traffic light positions
             tl_config_file = rospy.get_param('/traffic_light_config')
             if tl_config_file is not None:
@@ -147,9 +160,7 @@ class WaypointUpdater(object):
                     p.pose.position.y = tf[1]
                     next_wp = WaypointUpdater.find_next_waypoint(
                         self.waypoints, p, next_wp)
-
                     self.stoplines_wps.append((next_wp-1)%self.total_wp_num)
-                    rospy.logwarn("stop line: %.03f %.03f, wp:%d", tf[0],tf[1],next_wp)
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
@@ -172,6 +183,39 @@ class WaypointUpdater(object):
             if msg.data is -1:
                 # self.augmented_wps = self.generate_speedup_path()
                 rospy.logwarn("traffic light at wp:%d is GREEN,state enters SPEED_UP", self.tl_waypoint)
+                self.augmented_wps = None
+                self.tf_state = "no_traffic"
+
+        if self.waypoints is None or self.current_pose is None:
+            return
+
+        handlers = {"no_traffic":handle_no_traffic,
+                    "in_stopping":handle_in_stopping}
+        handlers[self.tf_state]()
+
+    def traffic_lights_cb(self,msg):
+
+        def handle_no_traffic():
+            if abs(self.next_wp_idx - self.stoplines_wps[self.next_tf_idx]) > 200:
+                return
+
+            if self.next_wp_idx > self.stoplines_wps[self.next_tf_idx] + 5:
+                self.next_tf_idx +=1
+                self.next_tf_idx = self.next_tf_idx % len(self.stoplines_wps)
+
+            if msg.lights[self.next_tf_idx].state < 2:
+                rospy.logwarn("traffic light at wp:%d is RED,state enters IN_STOPPING",
+                              self.stoplines_wps[self.next_tf_idx])
+                d = WaypointUpdater.distance_waypoints(self.waypoints, self.next_wp_idx,
+                                                       self.stoplines_wps[self.next_tf_idx])
+                self.augmented_wps = self.generate_brake_path(self.stoplines_wps[self.next_tf_idx], d)
+                if self.augmented_wps is not None:
+                    self.tf_state = "in_stopping"
+
+        def handle_in_stopping():
+            if msg.lights[self.next_tf_idx].state == 2:
+                rospy.logwarn("traffic light at wp:%d is GREEN,state enters SPEED_UP",
+                              self.stoplines_wps[self.next_tf_idx])
                 self.augmented_wps = None
                 self.tf_state = "no_traffic"
 
@@ -221,8 +265,16 @@ class WaypointUpdater(object):
             p.twist.twist.linear.x = 0
             return p
 
-        additional_wps = copy.deepcopy(self.waypoints[stop:stop + LOOKAHEAD_WPS])
+        if stop + LOOKAHEAD_WPS > self.total_wp_num:
+            additional_wps = copy.deepcopy(self.waypoints[stop:])
+            additional_wps += copy.deepcopy(self.waypoints[:(stop + LOOKAHEAD_WPS)%self.total_wp_num])
+        else:
+            additional_wps = copy.deepcopy(self.waypoints[stop:stop + LOOKAHEAD_WPS])
         additional_wps = map(zero_speed, additional_wps)
+
+        if start > self.total_wp_num:
+            return self.waypoints[self.next_wp_idx:] + self.waypoints[:start % self.total_wp_num]\
+                   + list(interpolated_wps) + additional_wps
 
         return self.waypoints[self.next_wp_idx:start] + list(interpolated_wps) + additional_wps
 
@@ -231,7 +283,7 @@ class WaypointUpdater(object):
         ds_slowdown, vs_slowdown = WaypointUpdater.generate_dist_vels(
             self.current_vel, 0, self.max_brake, self.max_jerk)
         interpolated_wps, start, stop = WaypointUpdater.interpolate_waypoints(
-            self.waypoints, stop_wp, ds_slowdown[-1], ds_slowdown, vs_slowdown, wp_is_start=False)
+            self.waypoints,self.wp_distances, stop_wp, ds_slowdown[-1], ds_slowdown, vs_slowdown, wp_is_start=False)
 
         return interpolated_wps,start,stop
 
@@ -252,7 +304,7 @@ class WaypointUpdater(object):
         ds_combined = list(ds_speedup) + list(ds_slowdown[1:])
         vs_combined = list(vs_speedup) + list(vs_slowdown[1:])
         interpolated_wps, start, stop = WaypointUpdater.interpolate_waypoints(
-            self.waypoints, stop_wp, ds_combined[-1], ds_combined, vs_combined, wp_is_start=False)
+            self.waypoints, self.wp_distances,stop_wp, ds_combined[-1], ds_combined, vs_combined, wp_is_start=False)
 
         return interpolated_wps, start, stop
 
@@ -307,12 +359,13 @@ class WaypointUpdater(object):
         vs_combined = list(vs_speedup) + list(vs_slowdown[1:])
 
         interpolated_wps, start, stop = WaypointUpdater.interpolate_waypoints(
-            self.waypoints, stop_wp, ds_combined[-1], ds_combined, vs_combined, wp_is_start=False)
+            self.waypoints, self.wp_distances, stop_wp, ds_combined[-1], ds_combined, vs_combined, wp_is_start=False)
         return interpolated_wps, start, stop
 
     @staticmethod
     def interpolate_waypoints(
             waypoints,
+            wp_distances,
             wp_idx,
             d0,
             distances,
@@ -320,6 +373,7 @@ class WaypointUpdater(object):
             wp_is_start=True):
         """
         :param waypoints:
+        :param wp_distances:
         :param wp_idx:
         :param d0: distance of start or end waypoint of generated trajectory
         :param distances:
@@ -338,27 +392,31 @@ class WaypointUpdater(object):
         d = d0
         wp_start = wp_stop =  wp_idx
 
+        total_wp = len(waypoints)
+
         if wp_is_start:
-            for i in range(wp_idx, len(waypoints)):
+            for i in range(wp_idx, wp_idx + total_wp):
                 ds_origs.append(d)
-                xs_origs.append(waypoints[i].pose.pose.position.x)
-                ys_origs.append(waypoints[i].pose.pose.position.y)
-                oz_origs.append(waypoints[i].pose.pose.orientation.z)
+                index = i%total_wp
+                xs_origs.append(waypoints[index].pose.pose.position.x)
+                ys_origs.append(waypoints[index].pose.pose.position.y)
+                oz_origs.append(waypoints[index].pose.pose.orientation.z)
                 if d > distances[-1]:
                     wp_stop = i
                     break
-                d += WaypointUpdater.distance_waypoints(waypoints, i, i + 1)
+                d += wp_distances[index]
 
         else:
-            for i in range(wp_idx, -1, -1):
+            for i in range(wp_idx, wp_idx - total_wp, -1):
                 ds_origs.append(d)
-                xs_origs.append(waypoints[i].pose.pose.position.x)
-                ys_origs.append(waypoints[i].pose.pose.position.y)
-                oz_origs.append(waypoints[i].pose.pose.orientation.z)
+                index = i % total_wp
+                xs_origs.append(waypoints[index].pose.pose.position.x)
+                ys_origs.append(waypoints[index].pose.pose.position.y)
+                oz_origs.append(waypoints[index].pose.pose.orientation.z)
                 if d < distances[0]:
                     wp_start = i
                     break
-                d -= WaypointUpdater.distance_waypoints(waypoints, i - 1, i)
+                d -= wp_distances[(index-1) % total_wp]
             # reverse the list for spline interpolation
             ds_origs = ds_origs[::-1]
             xs_origs = xs_origs[::-1]

@@ -16,7 +16,7 @@ import time
 import sys
 
 STATE_COUNT_THRESHOLD = 3
-LOG = False
+LOG = True
 
 class TLDetector(object):
     def __init__(self):
@@ -250,11 +250,10 @@ class TLDetector(object):
 
         #TODO Finds the closest visible traffic light (if one exists)
         if light:
-            light_wp = self.get_closest_waypoint(light.pose.pose)
             state = self.get_light_state(light)
-            if LOG:
-                rospy.logwarn("TL wp %d (%d), Stop line wp %d" % (light_wp, state, stopline_wp))
-            return light_wp, state
+            if LOG and self.last_state != self.state:
+                rospy.logwarn("TL (%d), Stop line wp %d" % (state, stopline_wp))
+            return stopline_wp, state
         self.waypoints = None
         return -1, TrafficLight.UNKNOWN
 

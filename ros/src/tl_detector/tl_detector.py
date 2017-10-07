@@ -196,9 +196,9 @@ class TLDetector(object):
 
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
 
-        x, y = self.project_to_image_plane(light.pose.pose.position)
-        if LOG:
-            rospy.logwarn("TL has center (%d, %d)" % (x, y))
+        #x, y = self.project_to_image_plane(light.pose.pose.position)
+        #if LOG:
+        #    rospy.logwarn("TL has center (%d, %d)" % (x, y))
 
         #TODO use light location to zoom in on traffic light in image
         #h, w, c = cv_image.shape
@@ -210,8 +210,8 @@ class TLDetector(object):
 
         #Get classification
         result = self.light_classifier.get_classification(cv_image)
-        if LOG:
-            rospy.logwarn("TL %s" % result)
+        #if LOG:
+        #    rospy.logwarn("TL %s" % result)
         return result
 
     def process_traffic_lights(self):
@@ -243,7 +243,7 @@ class TLDetector(object):
 
                 index_dist = abs(stopline_wp_ - car_wp)
 
-                if index_dist < min_index_dist and car_wp < stopline_wp_ :
+                if index_dist < min_index_dist and car_wp < stopline_wp_:
                     min_index_dist = index_dist
                     light = self.lights[i]
                     stopline_wp = stopline_wp_

@@ -109,8 +109,8 @@ class WaypointUpdater(object):
             predicted_wp, next_wp_idx = WaypointUpdater.predict_next_waypoint(self.base_waypoints, self.current_pose,
                                                                               self.current_vel, self.next_wp_idx)
 
-        if next_wp_idx != self.next_wp_idx:
-            rospy.logwarn("Next WayPoint:%d", next_wp_idx)
+        #if next_wp_idx != self.next_wp_idx:
+        #    rospy.logwarn("Next WayPoint:%d", next_wp_idx)
 
         if self.augmented_waypoints is not None:
             predicted_wp,next_wp = WaypointUpdater.predict_next_waypoint(self.augmented_waypoints, self.current_pose,
@@ -159,7 +159,7 @@ class WaypointUpdater(object):
                     p.pose.position.y = tf[1]
                     next_wp = WaypointUpdater.find_next_waypoint(
                         self.base_waypoints, p, next_wp)
-                    self.stoplines_wps.append((next_wp-1)%self.total_wp_num)
+                    self.stoplines_wps.append((next_wp-5)%self.total_wp_num)
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement

@@ -10,12 +10,18 @@ from light_classification.tl_classifier import TLClassifier
 import tf
 import cv2
 import yaml
+import math
+import numpy as np
+import sys
 
 STATE_COUNT_THRESHOLD = 3
+LOG = True
 
 class TLDetector(object):
     def __init__(self):
         rospy.init_node('tl_detector')
+
+        rate = rospy.Rate(2) 
 
         self.pose = None
         self.waypoints = None
@@ -81,7 +87,7 @@ class TLDetector(object):
         if self.state != state:
             self.state_count = 0
             self.state = state
-        elif self.state_count >= STATE_COUNT_THRESHOLD:
+        elif self.state_count >= STATE_COUNT_THRESHOLD and self.last_state != self.state:
             self.last_state = self.state
             light_wp = light_wp if state == TrafficLight.RED else -1
             self.last_wp = light_wp
@@ -100,8 +106,18 @@ class TLDetector(object):
             int: index of the closest waypoint in self.waypoints
 
         """
-        #TODO implement
-        return 0
+        #TODO implement: find index of cloest waypoint to pose
+        n = len(self.waypoints.waypoints)
+        node = [pose.position.x, pose.position.y]
+        nodes = np.zeros((n,2))
+
+        for i in range(n):
+            nodes[i] = [self.waypoints.waypoints[i].pose.pose.position.x,
+                        self.waypoints.waypoints[i].pose.pose.position.y]
+
+        dist = np.sum((nodes - node)**2, axis=1)
+
+        return np.argmin(dist)
 
 
     def project_to_image_plane(self, point_in_world):
@@ -137,6 +153,29 @@ class TLDetector(object):
 
         x = 0
         y = 0
+        
+        # focal lengths from the sim are in fact FOV in radians, convert FOV to focal lengths
+        if (fx < 10):
+            fx = math.tan(fx/2)*image_width*2
+            fy = math.tan(fy/2)*image_height*2
+
+        if trans != None:
+            # Calculates roll (psi), pitch (theta), yaw (phi) from the rotation matrix
+            euler = tf.transformations.euler_from_quaternion(rot)
+
+            sin_yaw = math.sin(euler[2])
+            cos_yaw = math.cos(euler[2])
+
+            # Pinhole Camera Model (https://goo.gl/x2oHRu)
+            # For more details, see (https://goo.gl/epdPfm)
+            # Rt = Rotation * Point + translation 
+            Rt = (point_in_world.x*cos_yaw - point_in_world.y*sin_yaw + trans[0], 
+                point_in_world.x*sin_yaw + point_in_world.y*cos_yaw + trans[1], 
+                point_in_world.z + trans[2])
+
+            # Note axis changes: car.x = img.z, car.y = img.x, car.z = img.y
+            x = int(fx * (-Rt[1])/Rt[0] + image_width/2)
+            y = int(fy * (-Rt[2])/Rt[0] + image_height)
 
         return (x, y)
 
@@ -156,12 +195,23 @@ class TLDetector(object):
 
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
 
-        x, y = self.project_to_image_plane(light.pose.pose.position)
+        #x, y = self.project_to_image_plane(light.pose.pose.position)
+        #if LOG:
+        #    rospy.logwarn("TL has center (%d, %d)" % (x, y))
 
         #TODO use light location to zoom in on traffic light in image
+        #h, w, c = cv_image.shape
+        #cpy = cv_image.copy()
+        #cv2.circle(cpy, center = (x,y), radius = 30, color = (200, 255, 255), thickness = 5)
+        #cv2.imwrite('traffic_lights_processed/processed_'+str(time.time())[:10]+'.png', cpy)
+        
+        # TODO: crop cv_image
 
         #Get classification
-        return self.light_classifier.get_classification(cv_image)
+        result = self.light_classifier.get_classification(cv_image)
+        #if LOG:
+        #    rospy.logwarn("TL %s" % result)
+        return result
 
     def process_traffic_lights(self):
         """Finds closest visible traffic light, if one exists, and determines its
@@ -176,14 +226,33 @@ class TLDetector(object):
 
         # List of positions that correspond to the line to stop in front of for a given intersection
         stop_line_positions = self.config['stop_line_positions']
-        if(self.pose):
-            car_position = self.get_closest_waypoint(self.pose.pose)
 
-        #TODO find the closest visible traffic light (if one exists)
+        if self.pose and self.waypoints:
+            # Finds the closest waypoint index of the car
+            car_wp = self.get_closest_waypoint(self.pose.pose)
 
+            # Finds the closest waypoint index of the next stopline
+            min_index_dist = sys.maxint
+            for i in range(len(stop_line_positions)):
+                stopline = Pose()
+                stopline.position.x = stop_line_positions[i][0]
+                stopline.position.y = stop_line_positions[i][1]
+
+                stopline_wp_ = self.get_closest_waypoint(stopline)
+
+                index_dist = abs(stopline_wp_ - car_wp)
+
+                if index_dist < min_index_dist and car_wp < stopline_wp_:
+                    min_index_dist = index_dist
+                    light = self.lights[i]
+                    stopline_wp = stopline_wp_
+
+        #TODO Finds the closest visible traffic light (if one exists)
         if light:
             state = self.get_light_state(light)
-            return light_wp, state
+            if LOG and self.last_state != self.state:
+                rospy.logwarn("TL (%d), Stop line wp %d" % (state, stopline_wp))
+            return stopline_wp, state
         self.waypoints = None
         return -1, TrafficLight.UNKNOWN
 

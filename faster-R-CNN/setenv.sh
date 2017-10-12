@@ -5,7 +5,7 @@ chmod 751 Miniconda2-4.3.27.1-Linux-x86_64.sh
 ./Miniconda2-4.3.27.1-Linux-x86_64.sh
 source ~/.bashrc
 sudo apt-get install protobuf-compiler
-conda create -name py2 -f requirements.yml
+conda env create -f environment.yml
 source activate py2
 
 git clone https://github.com/tensorflow/models.git

@@ -8,6 +8,12 @@ sudo apt-get install protobuf-compiler
 conda env create -f environment.yml
 source activate py2
 
+pushd .
+cd training
+wget http://download.tensorflow.org/models/object_detection/faster_rcnn_resnet101_coco_11_06_2017.tar.gz
+tar -vxzf faster_rcnn_resnet101_coco_11_06_2017.tar.gz
+popd
+
 git clone https://github.com/tensorflow/models.git
 
 pushd .

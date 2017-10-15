@@ -180,24 +180,6 @@ class WaypointUpdater(object):
                 self.base_waypoints[-1].pose.pose.position,
                 self.base_waypoints[0].pose.pose.position))
 
-            # read traffic light positions
-            tl_config_file = rospy.get_param('/traffic_light_config')
-            if tl_config_file is not None:
-                config = yaml.load(tl_config_file)
-                light_positions = config['stop_line_positions']
-                p = PoseStamped()
-                p.pose.position.x = light_positions[0][0]
-                p.pose.position.y = light_positions[0][1]
-                closest_wp = WaypointUpdater.find_nearst_waypoint(self.base_waypoints, p)
-                next_wp = closest_wp
-                for tf in light_positions:
-                    p = PoseStamped()
-                    p.pose.position.x = tf[0]
-                    p.pose.position.y = tf[1]
-                    next_wp = WaypointUpdater.find_next_waypoint(
-                        self.base_waypoints, p, next_wp)
-                    self.stoplines_wps.append((next_wp-5)%self.total_wp_num)
-
     def traffic_cb(self, msg):
         self.best_stop_line_index = msg.data
         self.time_received = rospy.get_time()

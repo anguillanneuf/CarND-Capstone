@@ -4,30 +4,25 @@ from sensor_msgs.msg import Image
 from styx_msgs.msg import TrafficLight
 from cv_bridge import CvBridge
 from light_classification.tl_classifier import TLClassifier
-import tf
-import cv2
 import math
-import numpy as np
 import sys
 
 from detector import Detector
 
 STATE_COUNT_THRESHOLD = 3
-LOG = True
 
 class RealDetector(Detector):
     def __init__(self):
         Detector.__init__(self)
-        rospy.Subscriber('/image_color', Image, self.image_cb)
         self.bridge = CvBridge()
         self.light_classifier = TLClassifier()
-        self.listener = tf.TransformListener()
 
         self.camera_image = None
         self.state = TrafficLight.UNKNOWN
         self.last_state = TrafficLight.UNKNOWN
         self.last_wp = -1
         self.state_count = 0
+        rospy.Subscriber('/image_color', Image, self.image_cb)
 
     def image_cb(self, msg):
         """Identifies red lights in the incoming camera image and publishes the index
@@ -37,16 +32,9 @@ class RealDetector(Detector):
             msg (Image): image from car-mounted camera
 
         """
-        self.has_image = True
         self.camera_image = msg
         light_wp, state = self.process_traffic_lights()
 
-        '''
-        Publish upcoming red lights at camera frequency.
-        Each predicted state has to occur `STATE_COUNT_THRESHOLD` number
-        of times till we start using it. Otherwise the previous stable state is
-        used.
-        '''
         if self.state != state:
             self.state_count = 0
             self.state = state
@@ -67,10 +55,6 @@ class RealDetector(Detector):
         Returns:
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
         """
-        if(not self.has_image):
-            self.prev_light_loc = None
-            return False
-
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
 
         #Get classification
@@ -85,9 +69,10 @@ class RealDetector(Detector):
         """
         closest_line_index = self.get_closest_stop_line();
         if closest_line_index is None:
-            return-1, TrafficLight.UNKNOWN
+            return -1, TrafficLight.UNKNOWN
 
         state = self.get_light_state(closest_line_index)
+
         return closest_line_index, state
 
     def get_closest_stop_line(self):

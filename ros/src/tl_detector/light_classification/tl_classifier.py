@@ -1,11 +1,23 @@
 from styx_msgs.msg import TrafficLight
+import tensorflow as tf
 import cv2
 import numpy as np
+import rospy
 
 class TLClassifier(object):
     def __init__(self):
-        #TODO load classifier
-        pass
+        self.model = TLClassifier.load_graph()
+
+    @staticmethod
+    def load_graph():
+        detection_graph = tf.Graph()
+        with detection_graph.as_default():
+            od_graph_def = tf.GraphDef()
+            with tf.gfile.GFile('../../../models/tl_graph.pb', 'rb') as fid:
+                serialized_graph = fid.read()
+                od_graph_def.ParseFromString(serialized_graph)
+                tf.import_graph_def(od_graph_def, name='')
+        return detection_graph
 
     def get_classification(self, image):
         """Determines the color of the traffic light in the image
@@ -17,48 +29,44 @@ class TLClassifier(object):
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
 
         """
-        blurred = cv2.GaussianBlur(image, (9, 9), 0)
-        hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+        with self.model.as_default():
+            with tf.Session(graph=self.model) as sess:
+                # Definite input and output Tensors for detection_graph
+                image_tensor = self.model.get_tensor_by_name('image_tensor:0')
+                # Each box represents a part of the image where a particular object was detected.
+                detection_boxes = self.model.get_tensor_by_name('detection_boxes:0')
+                # Each score represent how level of confidence for each of the objects.
+                # Score is shown on the result image, together with the class label.
+                detection_scores = self.model.get_tensor_by_name('detection_scores:0')
+                detection_classes = self.model.get_tensor_by_name('detection_classes:0')
+                num_detections = self.model.get_tensor_by_name('num_detections:0')
 
-        #Red
-        red_lower = np.array([0,190,210], dtype=np.uint8)
-        red_upper = np.array([10,255,255], dtype=np.uint8)
-        red_mask = cv2.inRange(hsv, red_lower, red_upper)
-        red_keypoints = self.get_blobs(red_mask)
-        if len(red_keypoints) > 0:
+                # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
+                image_np_expanded = np.expand_dims(image, axis=0)
+
+                # Actual detection.
+                (boxes, scores, classes, num) = sess.run(
+                  [detection_boxes, detection_scores, detection_classes, num_detections],
+                  feed_dict={image_tensor: image_np_expanded})
+
+                boxes = np.squeeze(boxes)
+                scores = np.squeeze(scores)
+                classes = np.squeeze(classes).astype(np.int32)
+
+                if (len(boxes) < 1):
+                    return TrafficLight.UNKNOWN;
+
+                klass = classes[0]
+                return TLClassifier.class_to_traffic_light(klass)
+
+    @staticmethod
+    def class_to_traffic_light(klass):
+        rospy.logwarn("klass :%s", klass)
+        if klass == 1:
             return TrafficLight.RED
-
-        #Yellow
-        yellow_lower = np.array([20,190,200], dtype=np.uint8)
-        yellow_upper = np.array([30,255,255], dtype=np.uint8)
-        yellow_mask = cv2.inRange(hsv, yellow_lower, yellow_upper)
-        yellow_keypoints = self.get_blobs(yellow_mask)
-        if len(yellow_keypoints) > 0:
+        elif klass == 2:
             return TrafficLight.YELLOW
-
-        #Green
-        green_lower = np.array([60,190,210], dtype=np.uint8)
-        green_upper = np.array([80,255,255], dtype=np.uint8)
-        green_mask = cv2.inRange(hsv, green_lower, green_upper)
-        green_keypoints = self.get_blobs(green_mask)
-        if len(green_keypoints) > 0:
+        elif klass == 3:
             return TrafficLight.GREEN
-
-        return TrafficLight.UNKNOWN
-
-    def get_blobs(self, mask):
-        blurred = cv2.GaussianBlur(mask,(9,9),0)
-
-        params = cv2.SimpleBlobDetector_Params()
-        # Filter by Area
-        params.filterByArea = False
-        params.minArea = 10
-        # Filter by Circularity
-        params.filterByCircularity = True
-        params.minCircularity = 0.8
-        # Filter by Color
-        params.filterByColor = True
-        params.blobColor = 255 # white
-
-        detector = cv2.SimpleBlobDetector_create(params)
-        return detector.detect(mask)
+        else:
+            return TrafficLight.UNKNOWN

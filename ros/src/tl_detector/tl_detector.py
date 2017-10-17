@@ -3,7 +3,7 @@ import rospy
 from dummy_detector import DummyDetector
 from real_detector import RealDetector
 
-DUMMY = True
+DUMMY = False 
 
 if __name__ == '__main__':
     try:

@@ -11,12 +11,14 @@ class TLClassifier(object):
     @staticmethod
     def load_graph():
         detection_graph = tf.Graph()
+        print("Loading graph...")
         with detection_graph.as_default():
             od_graph_def = tf.GraphDef()
             with tf.gfile.GFile('../../../models/tl_graph.pb', 'rb') as fid:
                 serialized_graph = fid.read()
                 od_graph_def.ParseFromString(serialized_graph)
                 tf.import_graph_def(od_graph_def, name='')
+        print("Graph loaded!")
         return detection_graph
 
     def get_classification(self, image):
@@ -53,10 +55,11 @@ class TLClassifier(object):
                 scores = np.squeeze(scores)
                 classes = np.squeeze(classes).astype(np.int32)
 
-                if (len(boxes) < 1):
+                if len(scores) < 1:
                     return TrafficLight.UNKNOWN;
-
+                
                 klass = classes[0]
+                
                 return TLClassifier.class_to_traffic_light(klass)
 
     @staticmethod

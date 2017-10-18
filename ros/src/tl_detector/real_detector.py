@@ -86,8 +86,7 @@ class RealDetector(Detector):
                stop_line_index < closest_line_index:
                 closest_line_index = stop_line_index
 
-        if closest_line_index == sys.maxint or \
-           math.fabs(closest_line_index - self.car_index) > 40:
+        if closest_line_index == sys.maxint: 
             return None
         else:
             return closest_line_index

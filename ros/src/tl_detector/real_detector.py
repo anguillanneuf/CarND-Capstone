@@ -9,7 +9,7 @@ import sys
 
 from detector import Detector
 
-STATE_COUNT_THRESHOLD = 3
+STATE_COUNT_THRESHOLD = 4
 
 class RealDetector(Detector):
     def __init__(self):
@@ -55,10 +55,10 @@ class RealDetector(Detector):
         Returns:
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
         """
-        cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
+        rgb_image = self.bridge.imgmsg_to_cv2(self.camera_image, "rgb8")
 
         #Get classification
-        return self.light_classifier.get_classification(cv_image)
+        return self.light_classifier.get_classification(rgb_image)
 
     def process_traffic_lights(self):
         """Finds closest visible traffic light, if one exists, and determines its
@@ -86,8 +86,7 @@ class RealDetector(Detector):
                stop_line_index < closest_line_index:
                 closest_line_index = stop_line_index
 
-        if closest_line_index == sys.maxint or \
-           math.fabs(closest_line_index - self.car_index) > 40:
+        if closest_line_index == sys.maxint: 
             return None
         else:
             return closest_line_index

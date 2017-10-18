@@ -59,7 +59,7 @@ class WaypointUpdater(object):
         self.tf_state = "no_traffic"
         self.augmented_waypoints = None
         # stoplines positions
-        self.best_stop_line_index = None
+        self.stop_line_index = None
         self.time_received = 0
 
         # dbw status
@@ -101,7 +101,7 @@ class WaypointUpdater(object):
             rate.sleep()
 
             if self.waypoints is None or self.current_pose is None or \
-                            self.dbw_enabled is False or self.best_stop_line_index is None:
+                            self.dbw_enabled is False or self.stop_line_index is None:
                 continue
 
             handlers = {"no_traffic":self.handle_no_traffic,
@@ -122,8 +122,8 @@ class WaypointUpdater(object):
                 predicted_wp, next_wp_idx = WaypointUpdater.predict_next_waypoint(self.waypoints, self.current_pose,
                                                                                   self.current_vel, self.next_wp_idx)
 
-            #if next_wp_idx != self.next_wp_idx:
-            #    rospy.logwarn("Next WayPoint:%d", next_wp_idx)
+            if next_wp_idx != self.next_wp_idx:
+                rospy.logwarn("Next WayPoint:%d", next_wp_idx)
 
             if self.augmented_waypoints is not None:
                 predicted_wp,next_wp = WaypointUpdater.predict_next_waypoint(self.augmented_waypoints, self.current_pose,
@@ -172,35 +172,28 @@ class WaypointUpdater(object):
                                    % self.total_wp_num
                 rospy.logwarn("opposite direction")
 
-
-    def get_stop_line_index(self):
-        if (rospy.get_time() - self.time_received) > STALE_TIME:
-            return -1
-        return self.best_stop_line_index
-
     def handle_no_traffic(self):
-        stop_line_index = self.get_stop_line_index()
-        if stop_line_index != -1:
-            rospy.logwarn("Stop line at wp:%d tl RED,state -> IN_STOPPING", stop_line_index)
+
+        if self.stop_line_index != -1:
+            rospy.logwarn("Stop line at wp:%d tl RED,state -> IN_STOPPING", self.stop_line_index)
             if self.car_dir == 1:
-                stop_line_index = (stop_line_index -5) %self.total_wp_num
+                real_stopline = (self.stop_line_index -5) %self.total_wp_num
             else:
-                stop_line_index = (self.total_wp_num - stop_line_index -5) % self.total_wp_num
+                real_stopline = (self.total_wp_num - self.stop_line_index -5) % self.total_wp_num
 
-            if stop_line_index > self.next_wp_idx:
-                d = sum(self.base_wp_dists[self.next_wp_idx:stop_line_index])
+            if real_stopline > self.next_wp_idx:
+                d = sum(self.base_wp_dists[self.next_wp_idx:real_stopline])
             else:
-                d = sum(self.base_wp_dists[self.next_wp_idx:]) + sum(self.base_wp_dists[:stop_line_index])
+                d = sum(self.base_wp_dists[self.next_wp_idx:]) + sum(self.base_wp_dists[:real_stopline])
 
-            self.augmented_waypoints = self.generate_brake_path(d,stop_line_index)
+            self.augmented_waypoints = self.generate_brake_path(d,real_stopline)
             if self.augmented_waypoints is not None:
                 self.tf_state = "in_stopping"
 
     def handle_in_stopping(self):
-        stop_line_index = self.get_stop_line_index()
-        if stop_line_index == -1:
+        if self.stop_line_index == -1:
             # self.augmented_wps = self.generate_speedup_path()
-            rospy.logwarn("Stop line at wp:%d tl GREEN,state -> SPEED_UP", self.best_stop_line_index)
+            rospy.logwarn("Stop line at wp:%d tl GREEN,state -> SPEED_UP", self.stop_line_index)
             self.augmented_waypoints = None
             self.tf_state = "no_traffic"
 
@@ -231,24 +224,23 @@ class WaypointUpdater(object):
                 self.next_wp_idx = WaypointUpdater.find_nearst_waypoint(self.waypoints, self.current_pose) \
                                    % self.total_wp_num
 
-
     def traffic_cb(self, msg):
-        self.best_stop_line_index = msg.data
-        self.time_received = rospy.get_time()
-        rospy.logwarn("traffix %s", msg)
-
-    def obstacle_cb(self, msg):
-        """Obstacles detected by the perception subsystem"""
-        pass
+        self.stop_line_index = msg.data
+        #rospy.logwarn("traffix %s", msg)
 
     def current_vel_cb(self, msg):
         """Car's velocity"""
         self.current_vel = msg.twist.linear.x
 
+    def obstacle_cb(self, msg):
+        """Obstacles detected by the perception subsystem"""
+        pass
+
     def generate_brake_path(self,distance,stop_wp, emergency=False):
         """
         Generate path for braking state
         :param distance: distance required
+        :param stop_wp: waypoint index to stop
         :param emergency: emergency brake
         :return: list of waypoints
         """

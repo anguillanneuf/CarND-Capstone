@@ -55,7 +55,7 @@ class TLClassifier(object):
 
     @staticmethod
     def class_to_traffic_light(klass):
-        rospy.logdebug("klass :%s", klass)
+        rospy.logwarn("klass :%s", klass)
         if klass == 1 or klass == 2:
             return TrafficLight.RED
         elif klass == 3:

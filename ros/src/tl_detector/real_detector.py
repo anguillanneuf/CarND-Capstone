@@ -18,6 +18,7 @@ class RealDetector(Detector):
         self.light_classifier = TLClassifier()
         self.state = TrafficLight.UNKNOWN
         self.state_count = 0
+
         rospy.Subscriber('/image_color', Image, self.image_cb)
         # notify waypoint updator that tl_detector is initialized
         self.upcoming_red_light_pub.publish(self.last_wp)

@@ -22,7 +22,7 @@ class RealDetector(Detector):
         self.last_state = TrafficLight.UNKNOWN
         self.last_wp = -1
         self.state_count = 0
-        rospy.Subscriber('/image_color', Image, self.image_cb)
+        rospy.Subscriber('/image_color', Image, self.image_cb, queue_size=1, buff_size=5760000)
 
     def image_cb(self, msg):
         """Identifies red lights in the incoming camera image and publishes the index

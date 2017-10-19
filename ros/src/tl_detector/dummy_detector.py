@@ -3,41 +3,30 @@ import rospy
 from styx_msgs.msg import TrafficLightArray, TrafficLight
 import sys
 
-from detector import Detector, get_closest_waypoint_index
+from detector import Detector, get_closest_waypoint_index,find_closest_waypoint_forwards
 
 class DummyDetector(Detector):
     def __init__(self):
         Detector.__init__(self)
         rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb)
-        self.tl_map = {}
-        self.tl_map_filled = False
+        self.upcoming_red_light_pub.publish(self.last_wp)
+        rospy.spin()
 
     def traffic_cb(self, msg):
         if self.waypoints is None or self.car_index is None:
             return
 
-        if not self.tl_map_filled:
-            lights = [x.pose.pose.position for x in msg.lights]
-            for light in lights:
-                ind = get_closest_waypoint_index(light, self.stop_line_positions)
-                self.tl_map[(light.x, light.y)] = self.stop_line_positions[ind]
-            self.tl_map_filled = True
+        # find next stop line
+        next_light_index = 0
+        for i in range(len(self.stop_wps)):
+            if self.stop_wps[i] > self.car_index:
+                next_light_index = i
+                break
 
-        best_stop_line_index = sys.maxint
+        if msg.lights[next_light_index].state == TrafficLight.GREEN:
+            wp = -1
+        elif msg.lights[next_light_index].state < TrafficLight.GREEN:
+            wp = self.stop_wps[next_light_index]
 
-        for light in msg.lights:
-            if light.state == TrafficLight.GREEN:
-                continue
+        self.upcoming_red_light_pub.publish(wp)
 
-            p = light.pose.pose.position
-            stop_line_index = self.stop_map[self.tl_map[(p.x, p.y)]]
-
-            if stop_line_index > self.car_index and \
-               stop_line_index < best_stop_line_index:
-                best_stop_line_index = stop_line_index
-
-        if best_stop_line_index == sys.maxint:
-            self.best_stop_line_index = None
-        else:
-            self.best_stop_line_index = best_stop_line_index
-            self.time_received = rospy.get_time()

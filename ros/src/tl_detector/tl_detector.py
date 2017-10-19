@@ -3,7 +3,7 @@ import rospy
 from dummy_detector import DummyDetector
 from real_detector import RealDetector
 
-DUMMY = False 
+DUMMY = False
 
 if __name__ == '__main__':
     try:
@@ -11,6 +11,6 @@ if __name__ == '__main__':
             detector = DummyDetector()
         else:
             detector = RealDetector()
-        detector.loop()
+
     except rospy.ROSInterruptException:
         rospy.logerr('Could not start traffic node.')

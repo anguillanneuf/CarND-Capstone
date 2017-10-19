@@ -31,6 +31,12 @@ class RealDetector(Detector):
             msg (Image): image from car-mounted camera
 
         """
+        wp = self.get_closest_stop_line()
+        # if the next traffic light is far away, 200 waypoints is 100 meter
+        if wp - self.car_index > 200:
+            self.upcoming_red_light_pub.publish(-1)
+            return
+
         state = self.process_traffic_lights(msg)
 
         if self.state != state:
@@ -39,7 +45,8 @@ class RealDetector(Detector):
         else:
             self.state_count += 1
             if self.state_count >= STATE_COUNT_THRESHOLD:
-                wp = self.get_closest_stop_line() if self.state == TrafficLight.RED else -1
+                if self.state == TrafficLight.GREEN:
+                    wp = -1
                 self.upcoming_red_light_pub.publish(wp)
 
     def process_traffic_lights(self,image):

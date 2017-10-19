@@ -65,8 +65,9 @@ class RealDetector(Detector):
 
         # find next stop line
         next_stop_index = 0
+        total_waypoints = len(self.waypoints)
         for i in range(len(self.stop_wps)):
-            if self.stop_wps[i] > self.car_index:
+            if self.car_index- 5 < self.stop_wps[i]:
                 next_stop_index = i
                 break
 

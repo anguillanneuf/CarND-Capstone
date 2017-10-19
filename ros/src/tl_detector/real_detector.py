@@ -67,7 +67,7 @@ class RealDetector(Detector):
         next_stop_index = 0
         total_waypoints = len(self.waypoints)
         for i in range(len(self.stop_wps)):
-            if self.car_index- 5 < self.stop_wps[i]:
+            if self.car_index < self.stop_wps[i]:
                 next_stop_index = i
                 break
 

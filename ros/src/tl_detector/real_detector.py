@@ -9,7 +9,7 @@ import sys
 
 from detector import Detector
 
-STATE_COUNT_THRESHOLD = 2
+STATE_COUNT_THRESHOLD = 4
 
 class RealDetector(Detector):
     def __init__(self):
@@ -18,9 +18,7 @@ class RealDetector(Detector):
         self.light_classifier = TLClassifier()
         self.state = TrafficLight.UNKNOWN
         self.state_count = 0
-
-        rospy.Subscriber('/image_color', Image, self.image_cb)
-        # notify waypoint updator that tl_detector is initialized
+        rospy.Subscriber('/image_color', Image, self.image_cb, queue_size=1, buff_size=5760000)
         self.upcoming_red_light_pub.publish(self.last_wp)
         rospy.spin()
 
@@ -34,7 +32,7 @@ class RealDetector(Detector):
         """
         wp = self.get_closest_stop_line()
         # if the next traffic light is far away, 200 waypoints is 100 meter
-        if wp - self.car_index > 200:
+        if (wp - self.car_index) % len(self.waypoints) > 200:
             self.upcoming_red_light_pub.publish(-1)
             return
 
@@ -48,7 +46,8 @@ class RealDetector(Detector):
             if self.state_count >= STATE_COUNT_THRESHOLD:
                 if self.state == TrafficLight.GREEN:
                     wp = -1
-                self.upcoming_red_light_pub.publish(wp)
+                if self.state != TrafficLight.UNKNOWN:
+                    self.upcoming_red_light_pub.publish(wp)
 
     def process_traffic_lights(self,image):
         """Finds closest visible traffic light, if one exists, and determines its
@@ -66,8 +65,9 @@ class RealDetector(Detector):
 
         # find next stop line
         next_stop_index = 0
+        total_waypoints = len(self.waypoints)
         for i in range(len(self.stop_wps)):
-            if self.stop_wps[i] > self.car_index:
+            if self.car_index < self.stop_wps[i]:
                 next_stop_index = i
                 break
 

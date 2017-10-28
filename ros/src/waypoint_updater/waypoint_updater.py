@@ -67,8 +67,11 @@ class WaypointUpdater(object):
         self.car_dir = 1
 
         self.target_vel = rospy.get_param('/waypoint_loader/velocity', 40) * 0.27778
-        self.max_accel = rospy.get_param('~max_accel', 8.)
-        self.max_brake = rospy.get_param('~max_brake', 10.)
+        accel_limit = rospy.get_param('/twist_controller/accel_limit',1.0)
+        decel_limit = rospy.get_param('/twist_controller/decel_limit', -1.0)
+        self.car_length = 4.0
+        self.max_accel = rospy.get_param('~max_accel', 10.) * accel_limit
+        self.max_brake = rospy.get_param('~max_brake', 10.) * np.abs(decel_limit)
         self.max_jerk = rospy.get_param('~max_jerk',10.)
 
         # Car's position
@@ -175,17 +178,15 @@ class WaypointUpdater(object):
 
         if self.stop_line_index != -1:
             rospy.loginfo("Stop line at wp:%d tl RED,state -> IN_STOPPING", self.stop_line_index)
-            if self.car_dir == 1:
-                real_stopline = (self.stop_line_index -5) %self.total_wp_num
-            else:
-                real_stopline = (self.total_wp_num - self.stop_line_index -5) % self.total_wp_num
+            if self.car_dir == -1:
+                self.stop_line_index = (self.total_wp_num - self.stop_line_index) % self.total_wp_num
 
-            if real_stopline > self.next_wp_idx:
-                d = sum(self.base_wp_dists[self.next_wp_idx:real_stopline])
+            if self.stop_line_index > self.next_wp_idx:
+                d = sum(self.base_wp_dists[self.next_wp_idx:self.stop_line_index])
             else:
-                d = sum(self.base_wp_dists[self.next_wp_idx:]) + sum(self.base_wp_dists[:real_stopline])
+                d = sum(self.base_wp_dists[self.next_wp_idx:]) + sum(self.base_wp_dists[:self.stop_line_index])
 
-            self.augmented_waypoints = self.generate_brake_path(d,real_stopline)
+            self.augmented_waypoints = self.generate_brake_path(d- self.car_length/2,self.stop_line_index)
             if self.augmented_waypoints is not None:
                 self.tf_state = "in_stopping"
 
@@ -285,8 +286,9 @@ class WaypointUpdater(object):
     def generate_brake_path_with_max_brake(self,stop_wp):
         ds_slowdown, vs_slowdown = WaypointUpdater.generate_dist_vels(
             self.current_vel, 0, self.max_brake, self.max_jerk)
+        d0 = ds_slowdown[-1] + self.car_length / 2
         interpolated_wps, start, stop = WaypointUpdater.interpolate_waypoints(
-            self.waypoints,self.base_wp_dists, stop_wp, ds_slowdown[-1], ds_slowdown, vs_slowdown)
+            self.waypoints,self.base_wp_dists, stop_wp, d0, ds_slowdown, vs_slowdown)
 
         rospy.loginfo("Slow down v from %.03f m/s with d %.03f m", self.current_vel, ds_slowdown[-1])
 
@@ -307,8 +309,9 @@ class WaypointUpdater(object):
         ds_slowdown = ds_slowdown + ds_speedup[-1]
         ds_combined = list(ds_speedup) + list(ds_slowdown[1:])
         vs_combined = list(vs_speedup) + list(vs_slowdown[1:])
+        d0 = ds_combined[-1] + self.car_length/2
         interpolated_wps, start, stop = WaypointUpdater.interpolate_waypoints(
-            self.waypoints, self.base_wp_dists,stop_wp, ds_combined[-1], ds_combined, vs_combined)
+            self.waypoints, self.base_wp_dists,stop_wp, d0, ds_combined, vs_combined)
 
         rospy.loginfo("Speed up from %.03f m/s to %.03f m/s with d %.03f m and slow down with d %.03f m",
                       self.current_vel, vs_speedup[-1], ds_speedup[-1], ds_slowdown[-1]-ds_speedup[-1])
@@ -364,8 +367,9 @@ class WaypointUpdater(object):
         ds_combined = list(ds_speedup) + list(ds_slowdown[1:])
         vs_combined = list(vs_speedup) + list(vs_slowdown[1:])
 
+        d0 = ds_combined[-1] + self.car_length / 2
         interpolated_wps, start, stop = WaypointUpdater.interpolate_waypoints(
-            self.waypoints, self.base_wp_dists, stop_wp, ds_combined[-1], ds_combined, vs_combined)
+            self.waypoints, self.base_wp_dists, stop_wp, d0, ds_combined, vs_combined)
         return interpolated_wps, start, stop
 
     @staticmethod

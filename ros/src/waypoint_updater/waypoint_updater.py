@@ -45,9 +45,6 @@ class WaypointUpdater(object):
 
         # for normal driving
         self.waypoints = None
-        self.base_waypoints=None
-        self.base_waypoints_reverse=None
-
         # distance to next waypoint
         self.base_wp_dists = []
         self.total_wp_num = 0
@@ -63,8 +60,6 @@ class WaypointUpdater(object):
 
         # dbw status
         self.dbw_enabled = False
-        # car drive direction, +1: along base_waypoints, -1: opposite of base_waypoints
-        self.car_dir = 1
 
         self.target_vel = rospy.get_param('/waypoint_loader/velocity', 40) * 0.27778
         accel_limit = rospy.get_param('/twist_controller/accel_limit',1.0)
@@ -124,8 +119,8 @@ class WaypointUpdater(object):
                 predicted_wp, next_wp_idx = WaypointUpdater.predict_next_waypoint(self.waypoints, self.current_pose,
                                                                                   self.current_vel, self.next_wp_idx)
 
-            #if next_wp_idx != self.next_wp_idx:
-            #    rospy.loginfo("Next WayPoint:%d", next_wp_idx)
+            if next_wp_idx != self.next_wp_idx:
+                rospy.loginfo("Next WayPoint:%d", next_wp_idx)
 
             if self.augmented_waypoints is not None:
                 predicted_wp,next_wp = WaypointUpdater.predict_next_waypoint(self.augmented_waypoints, self.current_pose,
@@ -146,47 +141,28 @@ class WaypointUpdater(object):
 
     def dbw_enabled_cb(self,msg):
         self.dbw_enabled = msg.data
-        if self.dbw_enabled is True and self.current_pose is not None and self.base_waypoints is not None:
-            # check car heading and set car direction
-            self.next_wp_idx = WaypointUpdater.find_nearst_waypoint(self.base_waypoints, self.current_pose)\
-                               % self.total_wp_num
-
-            cp = self.current_pose.pose
-            # car's heading
-            (_, _, car_heading) = tf.transformations.euler_from_quaternion([cp.orientation.x,
-                                                                    cp.orientation.y,
-                                                                    cp.orientation.z,
-                                                                    cp.orientation.w])
-            x1 = self.base_waypoints[self.next_wp_idx].pose.pose.position.x
-            y1 = self.base_waypoints[self.next_wp_idx].pose.pose.position.y
-            x2 = self.base_waypoints[(self.next_wp_idx+1)%self.total_wp_num].pose.pose.position.x
-            y2 = self.base_waypoints[(self.next_wp_idx+1)%self.total_wp_num].pose.pose.position.y
-            wp_heading = math.atan2(y2 - y1, x2 - x1)
-
-            if math.cos(car_heading-wp_heading) > 0:
-                self.car_dir = 1
-                self.waypoints = self.base_waypoints
-                rospy.loginfo("self-driving..  car runs in waypoints direction, ")
-            else:
-                self.car_dir = -1
-                self.waypoints = self.base_waypoints_reverse
-                self.next_wp_idx = WaypointUpdater.find_nearst_waypoint(self.waypoints, self.current_pose) \
-                                   % self.total_wp_num
-                rospy.loginfo("self-driving..  car runs in opposite direction of waypoints")
+        self.augmented_waypoints = None
+        self.tf_state = "no_traffic"
+        self.stop_line_index = None
+        if msg.data == True and self.current_pose is not None:
+            self.next_wp_idx = WaypointUpdater.find_nearst_waypoint(self.waypoints, self.current_pose) \
+                           % self.total_wp_num
 
     def handle_no_traffic(self):
 
         if self.stop_line_index != -1:
             rospy.loginfo("Stop line at wp:%d tl RED,state -> IN_STOPPING", self.stop_line_index)
-            if self.car_dir == -1:
-                self.stop_line_index = (self.total_wp_num - self.stop_line_index) % self.total_wp_num
+            if self.stop_line_index >= self.next_wp_idx:
+                d = sum(self.base_wp_dists[self.next_wp_idx:self.stop_line_index]) + \
+                    Math3DHelper.distance(self.current_pose.pose.position,
+                        self.waypoints[self.next_wp_idx].pose.pose.position)
 
-            if self.stop_line_index > self.next_wp_idx:
-                d = sum(self.base_wp_dists[self.next_wp_idx:self.stop_line_index])
             else:
-                d = sum(self.base_wp_dists[self.next_wp_idx:]) + sum(self.base_wp_dists[:self.stop_line_index])
+                d = sum(self.base_wp_dists[self.next_wp_idx:]) + sum(self.base_wp_dists[:self.stop_line_index])+ \
+                    Math3DHelper.distance(self.current_pose.pose.position,
+                                      self.waypoints[self.next_wp_idx].pose.pose.position)
 
-            self.augmented_waypoints = self.generate_brake_path(d- self.car_length/2,self.stop_line_index)
+            self.augmented_waypoints = self.generate_brake_path(d- self.car_length,self.stop_line_index)
             if self.augmented_waypoints is not None:
                 self.tf_state = "in_stopping"
 
@@ -201,32 +177,27 @@ class WaypointUpdater(object):
         """Car's position callback"""
         if self.current_pose is None and self.waypoints is not None:
             self.next_wp_idx = WaypointUpdater.find_nearst_waypoint(self.waypoints, msg) % self.total_wp_num
-
         self.current_pose = msg
 
     def base_waypoints_cb(self, waypoints):
         """waypoints to follow callback"""
-        if self.waypoints is None:
-            self.base_waypoints = waypoints.waypoints
-            self.base_waypoints_reverse = self.base_waypoints[::-1]
-
-            self.waypoints = self.base_waypoints
-            self.total_wp_num = len(self.base_waypoints)
-            self.base_wp_dists = [ Math3DHelper.distance(
+        self.waypoints =  waypoints.waypoints
+        self.total_wp_num = len(self.waypoints)
+        self.base_wp_dists = [ Math3DHelper.distance(
                 self.waypoints[i].pose.pose.position,
                 self.waypoints[i + 1].pose.pose.position) for i in range(self.total_wp_num - 1)]
-            # last point to first point as a loop
-            self.base_wp_dists.append(Math3DHelper.distance(
+        # last point to first point as a loop
+        self.base_wp_dists.append(Math3DHelper.distance(
                 self.waypoints[-1].pose.pose.position,
                 self.waypoints[0].pose.pose.position))
 
-            if self.current_pose is not None:
+        if self.current_pose is not None:
                 self.next_wp_idx = WaypointUpdater.find_nearst_waypoint(self.waypoints, self.current_pose) \
                                    % self.total_wp_num
 
     def traffic_cb(self, msg):
         self.stop_line_index = msg.data
-        #rospy.logwarn("traffix %s", msg)
+        # rospy.logwarn("traffix %d", msg.data)
 
     def current_vel_cb(self, msg):
         """Car's velocity"""
@@ -253,7 +224,7 @@ class WaypointUpdater(object):
         # check if there is enough distance to brake to stop
         if distance < d_brake_min:
             rospy.logwarn("Underbrake !!!, required d,%.03f, actual. %.03f", d_brake_min, distance)
-            if emergency is False:
+            if emergency is False and d_brake_min > self.car_length + distance:
                 return None
             interpolated_wps, start, stop = self.generate_brake_path_with_max_brake(stop_wp)
         # enough distance to speed up and brake normal, normal means 0.5 x max_accel or 0.5 max_brake
@@ -277,21 +248,24 @@ class WaypointUpdater(object):
         rospy.loginfo("next wp:%d, start:%d,stop:%d, inter:%d,total:%d, distance:%.03f",
                       self.next_wp_idx,start,stop,len(interpolated_wps),self.total_wp_num,distance)
 
-        if start > self.total_wp_num:
-            return self.waypoints[self.next_wp_idx:] + self.waypoints[:start % self.total_wp_num]\
-                   + list(interpolated_wps) + additional_wps
-
-        return self.waypoints[self.next_wp_idx:start] + list(interpolated_wps) + additional_wps
+        if (self.next_wp_idx - start)%self.total_wp_num <= (stop - start)%self.total_wp_num:
+            rospy.loginfo("Immediate brake")
+            return list(interpolated_wps) + additional_wps
+        elif start >= self.next_wp_idx:
+            rospy.loginfo("Between boundary brake")
+            return self.waypoints[self.next_wp_idx:start] + list(interpolated_wps) + additional_wps
+        else:
+            rospy.loginfo("Normal brake")
+            return self.waypoints[self.next_wp_idx:] + self.waypoints[:start] + list(interpolated_wps) + additional_wps
 
     def generate_brake_path_with_max_brake(self,stop_wp):
         ds_slowdown, vs_slowdown = WaypointUpdater.generate_dist_vels(
             self.current_vel, 0, self.max_brake, self.max_jerk)
-        d0 = ds_slowdown[-1] + self.car_length / 2
+        d0 = ds_slowdown[-1] + self.car_length
         interpolated_wps, start, stop = WaypointUpdater.interpolate_waypoints(
             self.waypoints,self.base_wp_dists, stop_wp, d0, ds_slowdown, vs_slowdown)
 
-        rospy.loginfo("Slow down v from %.03f m/s with d %.03f m", self.current_vel, ds_slowdown[-1])
-
+        rospy.loginfo("MaxBrake:Slow down v from %.03f m/s with d %.03f m", self.current_vel, ds_slowdown[-1])
         return interpolated_wps,start,stop
 
     def generate_brake_path_with_half_max_brake(self, stop_wp):
@@ -309,13 +283,12 @@ class WaypointUpdater(object):
         ds_slowdown = ds_slowdown + ds_speedup[-1]
         ds_combined = list(ds_speedup) + list(ds_slowdown[1:])
         vs_combined = list(vs_speedup) + list(vs_slowdown[1:])
-        d0 = ds_combined[-1] + self.car_length/2
+        d0 = ds_combined[-1] + self.car_length
         interpolated_wps, start, stop = WaypointUpdater.interpolate_waypoints(
             self.waypoints, self.base_wp_dists,stop_wp, d0, ds_combined, vs_combined)
 
-        rospy.loginfo("Speed up from %.03f m/s to %.03f m/s with d %.03f m and slow down with d %.03f m",
+        rospy.loginfo("HalfBrake: Speed up from %.03f m/s to %.03f m/s with d %.03f m and slow down with d %.03f m",
                       self.current_vel, vs_speedup[-1], ds_speedup[-1], ds_slowdown[-1]-ds_speedup[-1])
-
         return interpolated_wps, start, stop
 
     def generate_brake_path_with_adapted_velocity(self, stop_wp,distance):
@@ -348,7 +321,7 @@ class WaypointUpdater(object):
             vs_speedup = [v0]
             ds_slowdown, vs_slowdown = WaypointUpdater.generate_dist_vels(
                 v0, 0, self.max_brake, self.max_jerk)
-            rospy.loginfo("Slow down v from %.03f m/s with d %.03f m", v0, distance)
+            rospy.loginfo("AdaptBrake:Slow down v from %.03f m/s with d %.03f m", v0, distance)
         else:
             ds_speedup, vs_speedup = WaypointUpdater.generate_dist_vels(
                 v0, vt, self.max_accel, self.max_jerk)
@@ -357,7 +330,7 @@ class WaypointUpdater(object):
             vs_speedup = [vs_speedup[-1]] * len(vs_speedup)
             ds_slowdown, vs_slowdown = WaypointUpdater.generate_dist_vels(
                 vt, 0, self.max_brake, self.max_jerk)
-            rospy.loginfo("Speed up from %.03f m/s to %.03f m/s with d %.03f m and slow down with d %.03f m",
+            rospy.loginfo("AdaptBrake:Speed up from %.03f m/s to %.03f m/s with d %.03f m and slow down with d %.03f m",
                           v0, vt, ds_speedup[-1], distance - ds_speedup[-1])
 
         # make brake path longer
@@ -367,7 +340,7 @@ class WaypointUpdater(object):
         ds_combined = list(ds_speedup) + list(ds_slowdown[1:])
         vs_combined = list(vs_speedup) + list(vs_slowdown[1:])
 
-        d0 = ds_combined[-1] + self.car_length / 2
+        d0 = ds_combined[-1] + self.car_length
         interpolated_wps, start, stop = WaypointUpdater.interpolate_waypoints(
             self.waypoints, self.base_wp_dists, stop_wp, d0, ds_combined, vs_combined)
         return interpolated_wps, start, stop

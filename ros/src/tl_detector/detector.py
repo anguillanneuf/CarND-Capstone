@@ -49,8 +49,6 @@ class Detector(object):
         self.car_index = None
         self.waypoints = None
         self.stop_wps = []
-        self.last_wp = -1
-
         rospy.init_node('tl_detector')
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
@@ -68,17 +66,16 @@ class Detector(object):
         self.car_index = find_closest_waypoint_forwards(self.waypoints,msg.pose.position,self.car_index)
 
     def waypoints_cb(self, msg):
-        if self.waypoints is None:
-            self.waypoints = [x.pose.pose.position for x in msg.waypoints]
-            config_string = rospy.get_param("/traffic_light_config")
-            config = yaml.load(config_string)
-            stop_positions = config['stop_line_positions']
-            p1 = Point(stop_positions[0][0],stop_positions[0][1])
-            closest_wp = get_closest_waypoint_index(p1,self.waypoints)
-
-            for stop in stop_positions:
-                p = Point(stop[0],stop[1])
-                closest_wp = find_closest_waypoint_forwards(self.waypoints,p,closest_wp)
-                self.stop_wps.append(closest_wp)
-
-            self.stop_wps.sort()
+        self.waypoints = [x.pose.pose.position for x in msg.waypoints]
+        self.car_index = None
+        config_string = rospy.get_param("/traffic_light_config")
+        config = yaml.load(config_string)
+        stop_positions = config['stop_line_positions']
+        p1 = Point(stop_positions[0][0],stop_positions[0][1])
+        closest_wp = get_closest_waypoint_index(p1,self.waypoints)
+        self.stop_wps = []
+        for stop in stop_positions:
+            p = Point(stop[0],stop[1])
+            closest_wp = find_closest_waypoint_forwards(self.waypoints,p,closest_wp)
+            self.stop_wps.append(closest_wp)
+        self.stop_wps.sort()

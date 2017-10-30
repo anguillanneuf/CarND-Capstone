@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <launch>
-    <node pkg="waypoint_loader" type="waypoint_loader.py" name="waypoint_loader">
+    <node pkg="waypoint_loader" type="waypoint_loader.py" name="waypoint_loader" output="screen">
         <param name="path" value="$(find styx)../../../data/churchlot_with_cars.csv" />
         <param name="velocity" value="16" />
     </node>

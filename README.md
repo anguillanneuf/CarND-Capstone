@@ -3,15 +3,11 @@ This is the project repo for the final project of the Udacity Self-Driving Car N
 ## Team FinishLine
 
 - Team Leader:  
-Tianzi Harrison  
-anguillanneuf@gmail.com  
+Tianzi Cai 
 - Team Members:  
 Yusun Liu  
-liuyusun@hotmail.com  
-Hiraku Shibuya  
-hiraku.shibuya888@gmail.com  
-Davy Leggieri  
-davy.leggieri@gmail.com  
+Hiraku Shibuya   
+Davy Leggieri
 
 ## Video  
 You may see a video of our car driving the second lap in the simulator here: https://youtu.be/u-9C46mq8wY
